@@ -1,11 +1,10 @@
 approvers:
   - rrasouli
-  - openshift-team-windows-containers-maintainers
+  - weinliu 
 reviewers:
   - rrasouli
-  - openshift-team-windows-containers-maintainers
-  - openshift-team-windows-containers
-
+  - weinliu
+  - jrvaldes 
+  - sebsoto
 options:
-  # https://github.com/kubernetes/test-infra/blob/master/prow/plugins/approve/approvers/README.md#options
   no_parent_owners: true
