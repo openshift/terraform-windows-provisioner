@@ -1,0 +1,10 @@
+approvers:
+  - rrasouli
+  - weinliu 
+reviewers:
+  - rrasouli
+  - weinliu
+  - jrvaldes 
+  - sebsoto
+options:
+  no_parent_owners: true
