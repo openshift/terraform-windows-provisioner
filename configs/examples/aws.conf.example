@@ -1,0 +1,20 @@
+# AWS-Specific Configuration Example
+# This file shows AWS-specific configuration options
+
+# Windows Credentials (Required)
+WINC_ADMIN_PASSWORD="YourSecurePassword123!"
+WINC_SSH_PUBLIC_KEY="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... your-email@example.com"
+
+# AWS Instance Configuration
+AWS_INSTANCE_TYPE=m5a.large
+AWS_ROOT_VOLUME_SIZE=120
+AWS_ROOT_VOLUME_TYPE=gp2
+
+# AWS Region (optional - auto-detected from cluster if not set)
+# AWS_DEFAULT_REGION=us-east-1
+
+# Instance Tags
+ENVIRONMENT_TAG=production
+MANAGED_BY_TAG=terraform
+
+# Additional AWS-specific tags can be added in the Terraform files

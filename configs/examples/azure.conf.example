@@ -1,0 +1,31 @@
+# Azure-Specific Configuration Example
+# This file shows Azure-specific configuration options
+
+# Windows Credentials (Required)
+WINC_ADMIN_PASSWORD="YourSecurePassword123!"
+WINC_SSH_PUBLIC_KEY="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... your-email@example.com"
+
+# Azure-Specific Windows Username
+# Azure uses 'capi' as default, but can be customized
+WINDOWS_ADMIN_USERNAME=capi
+
+# Azure VM Configuration
+AZURE_INSTANCE_SIZE=Standard_D2s_v3
+AZURE_DISK_SIZE_GB=128
+
+# Azure VM Extension Configuration
+AZURE_VM_EXTENSION_HANDLER_VERSION=1.9
+
+# Azure Windows Image Versions
+# Use specific versions for consistency, or 'latest' for most recent
+# Windows Server 2019
+AZURE_2019_IMAGE_VERSION=17763.4499.230606
+# Windows Server 2022
+AZURE_2022_IMAGE_VERSION=20348.1787.230621
+
+# Instance Tags
+ENVIRONMENT_TAG=production
+MANAGED_BY_TAG=terraform
+
+# Note: Azure instance names are limited to 13 characters
+# The script will automatically truncate longer names

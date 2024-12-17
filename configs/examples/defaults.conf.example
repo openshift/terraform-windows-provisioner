@@ -1,0 +1,53 @@
+# BYOH Provisioner User Configuration Example
+# Copy this file to ~/.config/byoh-provisioner/config and edit with your values
+# chmod 600 ~/.config/byoh-provisioner/config
+
+# =============================================================================
+# REQUIRED CREDENTIALS
+# =============================================================================
+
+# Windows Administrator Password
+# IMPORTANT: Use a strong password that meets Windows complexity requirements
+# - At least 8 characters
+# - Contains uppercase and lowercase letters
+# - Contains numbers
+# - Contains special characters
+WINC_ADMIN_PASSWORD="YourSecurePassword123!"
+
+# SSH Public Key for Remote Access
+# Provide your full SSH public key (e.g., contents of ~/.ssh/id_rsa.pub)
+WINC_SSH_PUBLIC_KEY="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... your-email@example.com"
+
+# =============================================================================
+# OPTIONAL CONFIGURATION OVERRIDES
+# =============================================================================
+
+# Logging
+# BYOH_LOG_LEVEL=INFO
+
+# Terraform
+# BYOH_TMP_DIR=/tmp/terraform_byoh
+
+# Windows Settings
+# WINDOWS_ADMIN_USERNAME=Administrator
+# WINDOWS_CONTAINER_LOGS_PORT=10250
+
+# Azure-specific
+# Use specific image versions instead of 'latest'
+# AZURE_2019_IMAGE_VERSION=17763.4499.230606
+# AZURE_2022_IMAGE_VERSION=20348.1787.230621
+# AZURE_VM_EXTENSION_HANDLER_VERSION=1.9
+
+# Instance Tags
+# ENVIRONMENT_TAG=production
+# MANAGED_BY_TAG=terraform
+
+# Instance Types (override platform defaults)
+# AWS_INSTANCE_TYPE=m5a.xlarge
+# AZURE_INSTANCE_SIZE=Standard_D4s_v3
+# GCP_MACHINE_TYPE=n1-standard-4
+
+# Disk Configuration
+# AWS_ROOT_VOLUME_SIZE=200
+# AZURE_DISK_SIZE_GB=256
+# GCP_BOOT_DISK_SIZE_GB=200

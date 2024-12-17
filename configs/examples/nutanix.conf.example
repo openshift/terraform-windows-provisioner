@@ -1,0 +1,29 @@
+# Nutanix-Specific Configuration Example
+# This file shows Nutanix-specific configuration options
+
+# Windows Credentials (Required)
+WINC_ADMIN_PASSWORD="YourSecurePassword123!"
+WINC_SSH_PUBLIC_KEY="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAQC... your-email@example.com"
+
+# Nutanix VM Configuration
+NUTANIX_NUM_CPUS=4
+NUTANIX_CORES_PER_VCPU=1
+NUTANIX_MEMORY_MB=8192
+NUTANIX_DISK_SIZE_GB=120
+
+# Nutanix Image Names
+# These should match your pre-configured Windows images in Prism Central
+NUTANIX_2019_IMAGE_NAME=Windows-Server-2019
+NUTANIX_2022_IMAGE_NAME=Windows-Server-2022
+
+# Instance Tags
+ENVIRONMENT_TAG=production
+MANAGED_BY_TAG=terraform
+
+# Windows Configuration
+WINDOWS_ADMIN_USERNAME=Administrator
+WINDOWS_CONTAINER_LOGS_PORT=10250
+
+# Note: Nutanix credentials are automatically loaded from cluster secrets
+# Ensure your cluster has proper Nutanix credentials configured
+# Pre-configured Windows images must exist in Prism Central
