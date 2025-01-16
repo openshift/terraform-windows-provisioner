@@ -32,7 +32,7 @@ data "azurerm_platform_image" "windows-image" {
   offer     = "WindowsServer"
   publisher = "MicrosoftWindowsServer"
 # Use utils/get_update_version.sh to get the most recent version
-  version = var.winc_worker_sku == "2019-datacenter-smalldisk" ? "17763.4499.230606" : var.winc_worker_sku == "2022-datacenter-smalldisk" ? "20348.1787.230621" : null
+  version = var.winc_worker_sku == "2019-Datacenter-smalldisk" ? "17763.6293.240905" : var.winc_worker_sku == "2022-Datacenter-smalldisk" ? "latest" : null
 }
 
 

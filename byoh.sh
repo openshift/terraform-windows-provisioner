@@ -16,6 +16,12 @@ win_version="${5:-2022}"
 
 platform=$(oc get infrastructure cluster -o=jsonpath="{.status.platformStatus.type}"| tr '[:upper:]' '[:lower:]')
 
+# Ensure SSH_PUBLIC_KEY is set
+if [ -z "${SSH_PUBLIC_KEY:-}" ]; then
+    echo "ERROR: SSH_PUBLIC_KEY environment variable is not set. Aborting."
+    exit 1
+fi
+
 function export_credentials()
 {
     case $platform in
@@ -100,23 +106,31 @@ function get_terraform_arguments()
                 byoh_name="${byoh_name:0:13}"
             fi
 			# Validate that AZURE_ADMIN_PASSWORD is set
-			if [ -z "${AZURE_ADMIN_PASSWORD}" ]; then
-				echo "ERROR: AZURE_ADMIN_PASSWORD environment variable is not set. Aborting."
-				exit 1
+			if [ -z "${AZURE_ADMIN_PASSWORD:-}" ]; then
+        		echo "ERROR: AZURE_ADMIN_PASSWORD environment variable is not set. This variable is required for Azure deployments."
+		        echo "Please export AZURE_ADMIN_PASSWORD and try again."
+        		exit 1
 			fi
 
             winMachineHostname=$(oc get nodes -l "node-role.kubernetes.io/worker,windowsmachineconfig.openshift.io/byoh!=true" -o=jsonpath="{.items[0].status.addresses[?(@.type=='Hostname')].address}")
-			windowsSku=$(oc get machineset.machine.openshift.io -n openshift-machine-api -o=jsonpath="{.items[?(@.spec.template.metadata.labels.machine\.openshift\.io\/os-id=='Windows')].spec.template.spec.providerSpec.value.image.sku}")
-            #windowsSku="2019-Datacenter"
-            #windowsSku="2022-datacenter"
+			 windowsSku=$(oc get machineset.machine.openshift.io -n openshift-machine-api \
+			         -o=jsonpath="{.items[?(@.spec.template.metadata.labels.machine\.openshift\.io\/os-id=='Windows')].spec.template.spec.providerSpec.value.image.sku}")
+
+			if [ -z "${windowsSku}" ]; then
+			    echo "ERROR: Failed to retrieve Windows SKU from OpenShift machineset."
+				exit 1
+			fi
+			#windowsSku="2019-Datacenter-smalldisk"
+            windowsSku="2022-datacenter"
+			
 			terraform_args="--var winc_number_workers=${num_byoh} \
                     --var winc_machine_hostname=${winMachineHostname} \
                     --var winc_instance_name=${byoh_name} \
                     --var winc_resource_group=${ARM_RESOURCEGROUP} \
                     --var winc_resource_prefix=${ARM_RESOURCE_PREFIX} \
                     --var winc_worker_sku=${windowsSku} \
-                    --var azure_admin_password=${AZURE_ADMIN_PASSWORD}" \
-                    --var admin_username=${ADMIN_USERNAME:-capi}" # Use environment variable or default to 'capi'
+                    --var azure_admin_password=${AZURE_ADMIN_PASSWORD} \
+                    --var admin_username=${ADMIN_USERNAME:-capi}" 
 			;;
 		"vsphere")
 			windowsTemplate=$(oc get machineset.machine.openshift.io -n openshift-machine-api -o=jsonpath="{.items[?(@.spec.template.metadata.labels.machine\.openshift\.io\/os-id=='Windows')].spec.template.spec.providerSpec.value.template}")
@@ -210,6 +224,7 @@ case $action in
 		export_credentials
 		cd $templates_dir
 		terraform init
+		echo "Terraform args: " + $(get_terraform_arguments)
 		terraform apply --auto-approve $(get_terraform_arguments) --var "ssh_public_key=${SSH_PUBLIC_KEY}"
 
 	    # Create configmap and apply it (follows to apply)
