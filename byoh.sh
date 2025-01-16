@@ -99,11 +99,24 @@ function get_terraform_arguments()
             if (( ${#byoh_name} > 13 )); then
                 byoh_name="${byoh_name:0:13}"
             fi
+			# Validate that AZURE_ADMIN_PASSWORD is set
+			if [ -z "${AZURE_ADMIN_PASSWORD}" ]; then
+				echo "ERROR: AZURE_ADMIN_PASSWORD environment variable is not set. Aborting."
+				exit 1
+			fi
+
             winMachineHostname=$(oc get nodes -l "node-role.kubernetes.io/worker,windowsmachineconfig.openshift.io/byoh!=true" -o=jsonpath="{.items[0].status.addresses[?(@.type=='Hostname')].address}")
 			windowsSku=$(oc get machineset.machine.openshift.io -n openshift-machine-api -o=jsonpath="{.items[?(@.spec.template.metadata.labels.machine\.openshift\.io\/os-id=='Windows')].spec.template.spec.providerSpec.value.image.sku}")
             #windowsSku="2019-Datacenter"
             #windowsSku="2022-datacenter"
-			terraform_args="--var winc_number_workers=${num_byoh} --var winc_machine_hostname=${winMachineHostname} --var winc_instance_name=${byoh_name} --var winc_resource_group=${ARM_RESOURCEGROUP} --var winc_resource_prefix=${ARM_RESOURCE_PREFIX} --var winc_worker_sku=${windowsSku}"
+			terraform_args="--var winc_number_workers=${num_byoh} \
+                    --var winc_machine_hostname=${winMachineHostname} \
+                    --var winc_instance_name=${byoh_name} \
+                    --var winc_resource_group=${ARM_RESOURCEGROUP} \
+                    --var winc_resource_prefix=${ARM_RESOURCE_PREFIX} \
+                    --var winc_worker_sku=${windowsSku} \
+                    --var azure_admin_password=${AZURE_ADMIN_PASSWORD}" \
+                    --var admin_username=${ADMIN_USERNAME:-capi}" # Use environment variable or default to 'capi'
 			;;
 		"vsphere")
 			windowsTemplate=$(oc get machineset.machine.openshift.io -n openshift-machine-api -o=jsonpath="{.items[?(@.spec.template.metadata.labels.machine\.openshift\.io\/os-id=='Windows')].spec.template.spec.providerSpec.value.template}")
