@@ -1,29 +1,41 @@
 #!/bin/bash
-# $1 : action to perform, it could be 'apply', 'destroy', 'arguments', 'configmap', 'clean'. Default: 'apply'
-# $2: name for the byoh instances, it will append a number. Default: "byoh-winc"
-# $3: number of byoh workers
-# If no argument is passed default number of byoh nodes = 2
-# $4: suffix to append to the folder created. This is useful when you have already run the script once
-# $5: windows server version to use in BYOH nodes. Accepted: 2019 or 2022
-set -eu
-set -o pipefail
+# BYOH provisioning script
+# $1 : action to perform (apply, destroy, arguments, configmap, clean). Default: apply
+# $2 : name for the BYOH instances (default: byoh-winc)
+# $3 : number of BYOH workers (default: 2)
+# $4 : temporary folder suffix (optional)
+# $5 : Windows Server version (2019 or 2022, default: 2022)
 
+set -euo pipefail
+
+# Input arguments and defaults
 action="${1:-apply}"
 byoh_name="${2:-byoh-winc}"
 num_byoh="${3:-2}"
 tmp_folder_suffix="${4:-}"
 win_version="${5:-2022}"
 
-platform=$(oc get infrastructure cluster -o=jsonpath="{.status.platformStatus.type}"| tr '[:upper:]' '[:lower:]')
+platform=$(oc get infrastructure cluster -o=jsonpath="{.status.platformStatus.type}" | tr '[:upper:]' '[:lower:]')
 
-# Ensure SSH_PUBLIC_KEY is set
-if [ -z "${SSH_PUBLIC_KEY:-}" ]; then
-    echo "ERROR: SSH_PUBLIC_KEY environment variable is not set. Aborting."
+# Check SSH_PUBLIC_KEY for required platforms
+case $platform in
+  "aws"|"azure"|"gcp")
+    if [ -z "${SSH_PUBLIC_KEY:-}" ]; then
+      echo "ERROR: SSH_PUBLIC_KEY environment variable is not set. Please provide the SSH public key."
+      exit 1
+    fi
+    ;;
+  "vsphere"|"nutanix"|"none")
+    SSH_PUBLIC_KEY=""
+    ;;
+  *)
+    echo "ERROR: Unsupported platform: $platform"
     exit 1
-fi
+    ;;
+esac
 
-function export_credentials()
-{
+# Export cloud provider credentials
+function export_credentials() {
     case $platform in
         "aws")
             AWS_ACCESS_KEY=$(oc -n kube-system get secret aws-creds -o=jsonpath={.data.aws_access_key_id} | base64 -d)
@@ -44,17 +56,22 @@ function export_credentials()
             export ARM_CLIENT_ID ARM_CLIENT_SECRET ARM_SUBSCRIPTION_ID ARM_TENANT_ID ARM_RESOURCE_PREFIX ARM_RESOURCEGROUP
             ;;
         "vsphere")
-            VSPHERE_USER=$(oc -n kube-system get secret vsphere-creds -o=jsonpath='{.data.vcenter\.devqe\.ibmc\.devcluster\.openshift\.com\.username}' | base64 -d)
-            VSPHERE_PASSWORD=$(oc -n kube-system get secret vsphere-creds -o=jsonpath='{.data.vcenter\.devqe\.ibmc\.devcluster\.openshift\.com\.password}' | base64 -d)
-            VSPHERE_SERVER="vcenter.devqe.ibmc.devcluster.openshift.com"
-            export VSPHERE_USER VSPHERE_PASSWORD VSPHERE_SERVER
+		    # Fetch all keys dynamically
+			SECRET_DATA=$(oc -n kube-system get secret vsphere-creds -o=json | jq -r '.data')
+			# Extract the username, password, and server dynamically
+			VSPHERE_USER=$(echo "$SECRET_DATA" | jq -r 'to_entries[] | select(.key | test("\\.username$")) | .value' | base64 -d)
+            VSPHERE_PASSWORD=$(echo "$SECRET_DATA" | jq -r 'to_entries[] | select(.key | test("\\.password$")) | .value' | base64 -d)
+			VSPHERE_SERVER=$(oc get machineset -n openshift-machine-api winworker -o=jsonpath='{.spec.template.spec.providerSpec.value.workspace.server}')	
+            export TF_VAR_vsphere_user="$VSPHERE_USER"
+            export TF_VAR_vsphere_password="$VSPHERE_PASSWORD"
+            export TF_VAR_vsphere_server="$VSPHERE_SERVER" 
             ;;
-		"nutanix")
-			NUTANIX_CREDS=$(oc -n openshift-machine-api get secret nutanix-credentials -o=jsonpath='{.data.credentials}' | base64 -d)
-			NUTANIX_USERNAME=$(echo $NUTANIX_CREDS | jq -r '.[0].data.prismCentral.username')
-			NUTANIX_PASSWORD=$(echo $NUTANIX_CREDS | jq -r '.[0].data.prismCentral.password')
-			export NUTANIX_USERNAME NUTANIX_PASSWORD
-			;;
+        "nutanix")
+            NUTANIX_CREDS=$(oc -n openshift-machine-api get secret nutanix-credentials -o=jsonpath='{.data.credentials}' | base64 -d)
+            NUTANIX_USERNAME=$(echo $NUTANIX_CREDS | jq -r '.[0].data.prismCentral.username')
+            NUTANIX_PASSWORD=$(echo $NUTANIX_CREDS | jq -r '.[0].data.prismCentral.password')
+            export NUTANIX_USERNAME NUTANIX_PASSWORD
+            ;;
         "none")
             if ([ ! -f $HOME/.aws/config ] || [ ! -f $HOME/.aws/credentials ])
             then
@@ -72,102 +89,110 @@ function export_credentials()
 
 # Call the function to export credentials
 export_credentials
-
-# Rest of your script...
 echo "Credentials exported successfully. Proceeding with the script..."
 
-function get_terraform_arguments()
-{
-	terraform_args=""
-	case $platform in
+# Fetch parameters dynamically or use fallback values
+function fetch_vsphere_params() {
+  windowsTemplate=$(oc get machineset -n openshift-machine-api -o=json | \
+    jq -r '.items[] | select(.spec.template.metadata.labels["machine.openshift.io/os-id"]=="Windows") | .spec.template.spec.providerSpec.value.template' || echo "")
 
-		"aws")
-            winMachineHostname=$(oc get nodes -l "node-role.kubernetes.io/worker,windowsmachineconfig.openshift.io/byoh!=true" -o=jsonpath="{.items[0].status.addresses[?(@.type=='Hostname')].address}")
-			windowsAmi=$(oc get machineset.machine.openshift.io -n openshift-machine-api -o=jsonpath="{.items[?(@.spec.template.metadata.labels.machine\.openshift\.io\/os-id=='Windows')].spec.template.spec.providerSpec.value.ami.id}")
-		    clusterName=$(oc get machineset.machine.openshift.io -n openshift-machine-api -o=jsonpath="{.items[?(@.spec.template.metadata.labels.machine\.openshift\.io\/os-id=='Windows')].metadata.labels.machine\.openshift\.io\/cluster-api-cluster}")
-		    region=$(oc get infrastructure cluster -o=jsonpath="{.status.platformStatus.aws.region}")
+  datacenterName=$(oc get machineset -n openshift-machine-api -o=json | \
+    jq -r '.items[] | select(.spec.template.metadata.labels["machine.openshift.io/os-id"]=="Windows") | .spec.template.spec.providerSpec.value.workspace.datacenter' || echo "")
 
-			terraform_args="--var winc_number_workers=${num_byoh} --var winc_machine_hostname=${winMachineHostname} --var winc_instance_name=${byoh_name} --var winc_worker_ami=${windowsAmi} --var winc_cluster_name=${clusterName} --var winc_region=${region}"
-			;;
-		"gcp")
-			# If the hostname is short then the whole FQDN will appear, we just need the hostname part, so splitting
-			# by using dot and taking the first element.
-            winMachineHostname=$(oc get nodes -l "node-role.kubernetes.io/worker,windowsmachineconfig.openshift.io/byoh!=true" -o=jsonpath="{.items[0].status.addresses[?(@.type=='Hostname')].address}" | cut -d "." -f1)
-			zone=$(oc get machine.machine.openshift.io -n openshift-machine-api -o=jsonpath="{.items[0].metadata.labels.machine\.openshift\.io\/zone}")
-		    region=$(oc get infrastructure cluster -o=jsonpath="{.status.platformStatus.gcp.region}")
+  networkName=$(oc get machineset -n openshift-machine-api -o=json | \
+    jq -r '.items[] | select(.spec.template.metadata.labels["machine.openshift.io/os-id"]=="Windows") | .spec.template.spec.providerSpec.value.network.devices[0].networkName' || echo "")
 
-			terraform_args="--var winc_number_workers=${num_byoh} --var winc_machine_hostname=${winMachineHostname} --var winc_instance_name=${byoh_name} --var winc_zone=${zone} --var winc_region=${region}"
-			;;
-		"azure")
-			# In azure, computere name can't take more than 15 characters. As we are adding
-			# -0, -1, -2 depending on the number of Terraform nodes, we need to limit the
-			# size to 13 characters.
-            if (( ${#byoh_name} > 13 )); then
-                byoh_name="${byoh_name:0:13}"
-            fi
-			# Validate that AZURE_ADMIN_PASSWORD is set
-			if [ -z "${AZURE_ADMIN_PASSWORD:-}" ]; then
-        		echo "ERROR: AZURE_ADMIN_PASSWORD environment variable is not set. This variable is required for Azure deployments."
-		        echo "Please export AZURE_ADMIN_PASSWORD and try again."
-        		exit 1
-			fi
+  datastoreName=$(oc get machineset -n openshift-machine-api -o=json | \
+    jq -r '.items[] | select(.spec.template.metadata.labels["machine.openshift.io/os-id"]=="Windows") | .spec.template.spec.providerSpec.value.workspace.datastore' || echo "")
 
-            winMachineHostname=$(oc get nodes -l "node-role.kubernetes.io/worker,windowsmachineconfig.openshift.io/byoh!=true" -o=jsonpath="{.items[0].status.addresses[?(@.type=='Hostname')].address}")
-			 windowsSku=$(oc get machineset.machine.openshift.io -n openshift-machine-api \
-			         -o=jsonpath="{.items[?(@.spec.template.metadata.labels.machine\.openshift\.io\/os-id=='Windows')].spec.template.spec.providerSpec.value.image.sku}")
+  resourcePool="${TF_VAR_vsphere_resource_pool:-/DEVQEdatacenter/host/DEVQEcluster/Resources}"
 
-			if [ -z "${windowsSku}" ]; then
-			    echo "ERROR: Failed to retrieve Windows SKU from OpenShift machineset."
-				exit 1
-			fi
-			#windowsSku="2019-Datacenter-smalldisk"
-            windowsSku="2022-datacenter"
-			
-			terraform_args="--var winc_number_workers=${num_byoh} \
-                    --var winc_machine_hostname=${winMachineHostname} \
-                    --var winc_instance_name=${byoh_name} \
-                    --var winc_resource_group=${ARM_RESOURCEGROUP} \
-                    --var winc_resource_prefix=${ARM_RESOURCE_PREFIX} \
-                    --var winc_worker_sku=${windowsSku} \
-                    --var azure_admin_password=${AZURE_ADMIN_PASSWORD} \
-                    --var admin_username=${ADMIN_USERNAME:-capi}" 
-			;;
-		"vsphere")
-			windowsTemplate=$(oc get machineset.machine.openshift.io -n openshift-machine-api -o=jsonpath="{.items[?(@.spec.template.metadata.labels.machine\.openshift\.io\/os-id=='Windows')].spec.template.spec.providerSpec.value.template}")
+  # Validate resource pool
+  if [ -z "$resourcePool" ]; then
+    echo "ERROR: vsphere_resource_pool is not set and no default value is available. Aborting."
+    exit 1
+  fi
 
-			terraform_args="--var winc_number_workers=${num_byoh} --var winc_instance_name=${byoh_name} --var winc_vsphere_template=${windowsTemplate}"
-			;;
-		"nutanix")
-			cluster_name="Development-LTS"
-			# Get subnet UUID from the machineset configuration
-			subnet_uuid=$(oc get -n openshift-machine-api machineset winworker -o jsonpath='{.spec.template.spec.providerSpec.value.subnets[0].uuid}')
-			
-			terraform_args="--var winc_number_workers=${num_byoh} \
-						--var winc_instance_name=${byoh_name} \
-						--var winc_cluster_name=${cluster_name} \
-						--var nutanix_username=${NUTANIX_USERNAME} \
-						--var nutanix_password=${NUTANIX_PASSWORD} \
-						--var subnet_uuid=${subnet_uuid}"
-			;;
-		"none")
-			linuxNode=$(oc get nodes -l "node-role.kubernetes.io/worker,windowsmachineconfig.openshift.io/byoh!=true" -o=jsonpath="{.items[0].status.addresses[?(@.type=='Hostname')].address}")
-			ipLinuxNode=$(oc get node ${linuxNode} -o=jsonpath="{.status.addresses[?(@.type=='InternalIP')].address}")
-			# when calling nslookup, the output returns a dot at the very end. | sed 's/\.$//' takes care of removing it.
-			linuxNodeHostname=$(oc debug node/${linuxNode} -- nslookup ${ipLinuxNode} 2> /dev/null | grep -oE 'name = ([^.]*.*)' | sed -E 's/name = (.*)\.$/\1/')
-			region=$(echo ${linuxNodeHostname} | cut -d "." -f2)
-
-			terraform_args="--var winc_number_workers=${num_byoh} --var winc_machine_hostname=${linuxNodeHostname} --var winc_instance_name=${byoh_name} --var winc_version=${win_version} --var winc_region=${region}"
-			;;
-		*)
-			echo "ERROR: Platform ${platform} not supported. Aborting execution."
-            exit 1
-
-			;;
-	esac
-
-	echo "${terraform_args}"
-
+  # Validate fetched parameters
+  if [ -z "$windowsTemplate" ] || [ -z "$datacenterName" ] || [ -z "$networkName" ] || [ -z "$datastoreName" ] || [ -z "$resourcePool" ]; then
+    echo "ERROR: One or more required parameters are missing!"
+    exit 1
+  fi
 }
+
+# Generate Terraform arguments dynamically
+function get_terraform_arguments() {
+  terraform_args=()
+  terraform_args+=("--var=winc_number_workers=${num_byoh:-1}")
+  case $platform in
+    "aws")
+      winMachineHostname=$(oc get nodes -l "node-role.kubernetes.io/worker,windowsmachineconfig.openshift.io/byoh!=true" -o=jsonpath="{.items[0].status.addresses[?(@.type=='Hostname')].address}")
+      windowsAmi=$(oc get machineset.machine.openshift.io -n openshift-machine-api -o=jsonpath="{.items[?(@.spec.template.metadata.labels.machine\\.openshift\\.io/os-id=='Windows')].spec.template.spec.providerSpec.value.ami.id}")
+      clusterName=$(oc get machineset.machine.openshift.io -n openshift-machine-api -o=jsonpath="{.items[?(@.spec.template.metadata.labels.machine\\.openshift\\.io/os-id=='Windows')].metadata.labels.machine\\.openshift\\.io/cluster-api-cluster}")
+      region=$(oc get infrastructure cluster -o=jsonpath="{.status.platformStatus.aws.region}")
+      terraform_args+=(
+        --var "winc_machine_hostname=${winMachineHostname}"
+        --var "winc_instance_name=${byoh_name}"
+        --var "winc_worker_ami=${windowsAmi}"
+        --var "winc_cluster_name=${clusterName}"
+        --var "winc_region=${region}"
+        --var "ssh_public_key=${SSH_PUBLIC_KEY}"
+      )
+      ;;
+
+    "azure")
+      winMachineHostname=$(oc get nodes -l "node-role.kubernetes.io/worker,windowsmachineconfig.openshift.io/byoh!=true" -o=jsonpath="{.items[0].status.addresses[?(@.type=='Hostname')].address}")
+      windowsSku=$(oc get machineset.machine.openshift.io -n openshift-machine-api -o=jsonpath="{.items[?(@.spec.template.metadata.labels.machine\\.openshift\\.io/os-id=='Windows')].spec.template.spec.providerSpec.value.image.sku}")
+      terraform_args+=(
+        --var "winc_machine_hostname=${winMachineHostname}"
+        --var "winc_instance_name=${byoh_name}"
+        --var "winc_worker_sku=${windowsSku}"
+        --var "ssh_public_key=${SSH_PUBLIC_KEY}"
+      )
+      ;;
+
+    "gcp")
+      winMachineHostname=$(oc get nodes -l "node-role.kubernetes.io/worker,windowsmachineconfig.openshift.io/byoh!=true" -o=jsonpath="{.items[0].status.addresses[?(@.type=='Hostname')].address}" | cut -d '.' -f1)
+      zone=$(oc get machine.machine.openshift.io -n openshift-machine-api -o=jsonpath="{.items[0].metadata.labels.machine\\.openshift\\.io/zone}")
+      region=$(oc get infrastructure cluster -o=jsonpath="{.status.platformStatus.gcp.region}")
+      terraform_args+=(
+        --var "winc_machine_hostname=${winMachineHostname}"
+        --var "winc_instance_name=${byoh_name}"
+        --var "winc_zone=${zone}"
+        --var "winc_region=${region}"
+        --var "ssh_public_key=${SSH_PUBLIC_KEY}"
+      )
+      ;;
+
+    "vsphere")
+      fetch_vsphere_params
+      terraform_args+=(
+        "--var=winc_instance_name=${byoh_name}"
+        "--var=vsphere_template=${windowsTemplate}"
+        "--var=vsphere_datacenter=${datacenterName}"
+        "--var=vsphere_network=${networkName}"
+        "--var=vsphere_datastore=${datastoreName}"
+        "--var=vsphere_resource_pool=${resourcePool}"
+		"--var=instance_name=${byoh_name}"
+		"--var=vsphere_server=${VSPHERE_SERVER}"
+      )
+      ;;
+    *)
+      echo "ERROR: Unsupported platform: $platform"
+      exit 1
+      ;;
+  esac
+
+  printf '%s\n' "${terraform_args[@]}" 
+}
+
+
+
+tmp_dir="/tmp/terraform_byoh/"
+templates_dir="${tmp_dir}${platform}${tmp_folder_suffix}"
+
+# Ensure the templates directory exists
+mkdir -p "${templates_dir}"
 
 function get_user_name() {
 	case $platform in
@@ -184,19 +209,8 @@ function get_user_name() {
 	esac
 }
 
-tmp_dir="/tmp/terraform_byoh/"
-templates_dir="${tmp_dir}${platform}${tmp_folder_suffix}"
 
-# Ensure the templates directory exists
-mkdir -p "${templates_dir}"
-
-# Check if SSH_PUBLIC_KEY is provided as an environment variable
-if [ -z "${SSH_PUBLIC_KEY}" ]; then
-    echo "ERROR: SSH_PUBLIC_KEY is not set. Please provide the SSH public key."
-    exit 1
-fi
-
-case $action in 
+case $action in
 
 	"apply")
 		if [ -d $templates_dir ]
@@ -215,7 +229,6 @@ case $action in
 					echo "ERROR: Unsupported answer ${answer}, write 'yes' or 'no'. Aborting execution."
             		exit 1
 					;;
-				
 			esac
 		else
 			mkdir -p $tmp_dir
@@ -225,7 +238,15 @@ case $action in
 		cd $templates_dir
 		terraform init
 		echo "Terraform args: " + $(get_terraform_arguments)
-		terraform apply --auto-approve $(get_terraform_arguments) --var "ssh_public_key=${SSH_PUBLIC_KEY}"
+		readarray -t terraform_args < <(get_terraform_arguments)
+		# Debugging: Safely print arguments
+		echo "Terraform args:"
+		for arg in "${terraform_args[@]}"; do
+		  echo "  $arg"
+		done
+		# Apply with proper var syntax
+		echo "Number of workers passed to Terraform: $num_byoh"
+		terraform apply --auto-approve "${terraform_args[@]}"
 
 	    # Create configmap and apply it (follows to apply)
 		if [ ! -d $templates_dir ]
@@ -250,7 +271,7 @@ $(
 	done
 )
 EOF
-	oc create -f "${templates_dir/byoh_cm.yaml}"
+		oc create -f "${templates_dir/byoh_cm.yaml}"
 
 		;;
 	"configmap")
@@ -277,7 +298,7 @@ $(
 	done
 )
 EOF
-	oc create -f "${templates_dir/byoh_cm.yaml}"
+		oc create -f "${templates_dir/byoh_cm.yaml}"
 		;;
 	"destroy")
 		if [ ! -d $templates_dir ]
@@ -297,7 +318,13 @@ EOF
 		fi
 		export_credentials
 		cd $templates_dir
-		terraform destroy --auto-approve $(get_terraform_arguments) --var "ssh_public_key=${SSH_PUBLIC_KEY}"
+		readarray -t terraform_args < <(get_terraform_arguments)
+		# Add winc_number_workers for all platforms
+		echo "Terraform args:"
+	    for arg in "${terraform_args[@]}"; do
+    	    echo "  $arg"
+    	done
+    	terraform destroy --auto-approve "${terraform_args[@]}"		
 		
 		rm -r $templates_dir
 		;;
@@ -309,11 +336,11 @@ EOF
 		;;
 	"help")
 		echo "
-		\$1: action to perform, it could be 'apply', 'destroy', 'arguments', 'configmap', 'clean'. Default: 'apply'
-		\$2: name for the byoh instances, it will append a number. Default: "byoh-winc"
-		\$3: number of byoh workers. If no argument is passed default number of byoh nodes = 2
-		\$4: suffix to append to the folder created. This is useful when you have already run the script once
-		\$5: windows server version to use in BYOH nodes. Accepted: 2019 or 2022
+		$1: action to perform, it could be 'apply', 'destroy', 'arguments', 'configmap', 'clean'. Default: 'apply'
+		$2: name for the byoh instances, it will append a number. Default: \"byoh-winc\"
+		$3: number of byoh workers. If no argument is passed default number of byoh nodes = 2
+		$4: suffix to append to the folder created. This is useful when you have already run the script once
+		$5: windows server version to use in BYOH nodes. Accepted: 2019 or 2022
 
 		Example for BYOH: ./byoh.sh apply byoh 1 '' 2019
 		Example for others: ./byoh.sh apply winc-byoh 4 ''
@@ -327,5 +354,4 @@ EOF
     	exit 1
 		;;
 esac
-
 
