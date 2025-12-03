@@ -44,7 +44,7 @@ resource "google_compute_instance" "vm_instance" {
 
   # Instance metadata for Windows configuration
   metadata = {
-    sysprep-specialize-script-ps1 = data.template_file.windows-userdata.rendered
+    sysprep-specialize-script-ps1 = data.template_file.windows-userdata[count.index].rendered
   }
 
   # Network configuration

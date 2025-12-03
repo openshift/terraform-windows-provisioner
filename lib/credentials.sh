@@ -3,8 +3,20 @@
 # Handles loading credentials from multiple sources
 
 # Generate a cryptographically secure random password
+# Azure requires 3 out of 4: lowercase, uppercase, digit, special character
+# Password must be 8-123 characters
 function generate_random_password() {
-    echo "$(dd if=/dev/urandom bs=1 count=101 2>/dev/null | tr -dc 'a-z0-9A-Z' | head -c 18)"
+    # Generate a base64 string and extract characters to ensure all types are present
+    local base=$(openssl rand -base64 32 | tr -dc 'a-zA-Z0-9')
+
+    # Ensure we have at least one of each required type
+    local lower="abc"
+    local upper="XYZ"
+    local digit="123"
+    local special="!@#"
+
+    # Combine: 3 lowercase + 3 uppercase + 3 digits + 3 special + 12 random = 24 chars total
+    echo "${lower}${upper}${digit}${special}${base:0:12}"
 }
 
 # Generate random instance name suffix
@@ -72,6 +84,112 @@ function get_ssh_public_key_from_secret() {
     return 0
 }
 
+# Validate SSH public key format and length
+# Returns 0 if valid, 1 if invalid
+function validate_ssh_public_key() {
+    local key="$1"
+
+    # Check if key is empty
+    [[ -z "$key" ]] && return 1
+
+    # Check if key starts with a valid type (ssh-rsa, ssh-ed25519, ecdsa-sha2-nistp256, etc.)
+    [[ ! "$key" =~ ^(ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp) ]] && return 1
+
+    # Check minimum length (ssh-rsa keys should be at least 200 chars, typically 400-600)
+    # A truncated key would be much shorter
+    if [[ "$key" =~ ^ssh-rsa ]]; then
+        [[ ${#key} -lt 200 ]] && return 1
+    fi
+
+    # Valid
+    return 0
+}
+
+# Extract SSH public key from MachineConfig
+# For platforms using Ignition (GCP, etc.) where SSH keys are in MachineConfig
+# Returns the SSH public key on success, exits with 1 on failure
+function get_ssh_public_key_from_machineconfig() {
+    log "Attempting to extract SSH public key from MachineConfig..."
+
+    # Try common MachineConfig names for worker SSH keys
+    local machineconfig=$(oc get machineconfig -o name 2>/dev/null | grep -E '(worker-ssh|99-worker-ssh|ssh)' | head -1)
+
+    if [[ -z "$machineconfig" ]]; then
+        log "No SSH-related MachineConfig found"
+        return 1
+    fi
+
+    log "Found MachineConfig: $machineconfig"
+
+    # Extract SSH key from MachineConfig (Ignition format)
+    local ssh_key=$(oc get "$machineconfig" -o jsonpath='{.spec.config.passwd.users[?(@.name=="core")].sshAuthorizedKeys[0]}' 2>/dev/null)
+
+    if [[ -z "$ssh_key" ]]; then
+        log "No SSH public key found in MachineConfig"
+        return 1
+    fi
+
+    # Validate before returning to catch truncated keys
+    if ! validate_ssh_public_key "$ssh_key"; then
+        log "Warning: Extracted SSH key from MachineConfig is invalid or truncated (length: ${#ssh_key} chars)"
+        return 1
+    fi
+
+    echo "$ssh_key"
+    return 0
+}
+
+# Extract SSH public key from Linux MachineSet userdata
+# For platforms using cloud-init (AWS, Azure) where SSH keys are embedded in userdata
+# Returns the SSH public key on success, exits with 1 on failure
+function get_ssh_public_key_from_machineset() {
+    log "Attempting to extract SSH public key from Linux MachineSet userdata..."
+
+    # Find LINUX (worker) MachineSet - NOT Windows!
+    # WMCO uses the same SSH key for Windows nodes that's in Linux worker userdata
+    local machineset=$(oc get machineset -n openshift-machine-api -o name 2>/dev/null | grep -i worker | grep -v windows | head -1)
+
+    if [[ -z "$machineset" ]]; then
+        log "No Linux MachineSet found (platform may be UPI/none)"
+        return 1
+    fi
+
+    log "Found MachineSet: $machineset"
+
+    # Get userdata secret name
+    local userdata_secret=$(oc get "$machineset" -n openshift-machine-api -o jsonpath='{.spec.template.spec.providerSpec.value.userDataSecret.name}' 2>/dev/null)
+
+    if [[ -z "$userdata_secret" ]]; then
+        log "No userdata secret found in MachineSet (platform may not use MachineSets)"
+        return 1
+    fi
+
+    # Extract and decode userdata
+    local userdata=$(oc get secret "$userdata_secret" -n openshift-machine-api -o jsonpath='{.data.userData}' 2>/dev/null | base64 -d)
+
+    if [[ -z "$userdata" ]]; then
+        log "Failed to extract userdata from secret"
+        return 1
+    fi
+
+    # Extract SSH public key from userdata (supports ssh-rsa, ssh-ed25519, ecdsa-sha2)
+    local ssh_key=$(echo "$userdata" | grep -oP '(ssh-rsa|ssh-ed25519|ecdsa-sha2-nistp[0-9]+) [A-Za-z0-9+/=]+' | head -1)
+
+    if [[ -z "$ssh_key" ]]; then
+        log "No SSH public key found in MachineSet userdata"
+        return 1
+    fi
+
+    # Validate before returning to catch truncated keys
+    if ! validate_ssh_public_key "$ssh_key"; then
+        log "Warning: Extracted SSH key from MachineSet is invalid or truncated (length: ${#ssh_key} chars)"
+        return 1
+    fi
+
+    echo "$ssh_key"
+    return 0
+}
+
 # Load Windows credentials from environment or config file
 function load_windows_credentials() {
     local winc_password=$(get_config "WINC_ADMIN_PASSWORD")
@@ -98,13 +216,39 @@ function load_windows_credentials() {
         log "Random password generated. It will be displayed at the end of provisioning."
     fi
 
-    # If SSH key is still not found, try to extract it from cloud-private-key secret
+    # SSH Key Loading Priority:
+    # 1. User-provided (env/config) - allows override
+    # 2. WMCO cloud-private-key secret (DEFAULT - the ONLY key that matters!)
+    #
+    # Why not MachineSet/MachineConfig?
+    # - Those keys are for Linux nodes and may differ from WMCO's key
+    # - WMCO always uses cloud-private-key secret for Windows SSH authentication
+    # - We must use the same key WMCO uses, not the Linux node keys
+
+    local ssh_key_source=""
+
+    # Priority 1: Validate user-provided SSH key if one was found
+    if [[ -n "$winc_ssh_key" ]]; then
+        if ! validate_ssh_public_key "$winc_ssh_key"; then
+            log "Warning: User-provided WINC_SSH_PUBLIC_KEY is invalid or truncated (length: ${#winc_ssh_key} chars)"
+            log "This can happen if the config file has line breaks in the SSH key"
+            log "Falling back to automatic SSH key extraction..."
+            winc_ssh_key=""  # Clear the invalid key
+        else
+            ssh_key_source="user config/environment"
+            log "Using user-provided SSH key from ${ssh_key_source}"
+        fi
+    fi
+
+    # Priority 2 (DEFAULT): Extract public key from WMCO's cloud-private-key secret
+    # This is the definitive source - WMCO uses this private key for SSH authentication
     if [[ -z "$winc_ssh_key" ]]; then
-        log "WINC_SSH_PUBLIC_KEY not set. Attempting to extract from cloud-private-key secret..."
-        winc_ssh_key=$(get_ssh_public_key_from_secret)
+        log "Extracting SSH public key from WMCO cloud-private-key secret..."
+        winc_ssh_key=$(get_ssh_public_key_from_secret || true)
 
         if [[ -n "$winc_ssh_key" ]]; then
-            log "Successfully extracted SSH public key from cloud-private-key secret"
+            ssh_key_source="WMCO cloud-private-key secret"
+            log "Successfully extracted SSH key from ${ssh_key_source} (length: ${#winc_ssh_key} chars)"
         fi
     fi
 
@@ -113,11 +257,17 @@ function load_windows_credentials() {
         error "WINC_SSH_PUBLIC_KEY is required but not set. Please set it via environment variable, config file, or ensure cloud-private-key secret exists in WMCO namespace."
     fi
 
+    # Final validation of the SSH key
+    if ! validate_ssh_public_key "$winc_ssh_key"; then
+        error "WINC_SSH_PUBLIC_KEY is invalid. Please check the format and ensure it's a complete SSH public key."
+    fi
+
     # Export for use in Terraform
     export WINC_ADMIN_PASSWORD="$winc_password"
     export WINC_SSH_PUBLIC_KEY="$winc_ssh_key"
 
     log "Windows credentials loaded successfully"
+    log "SSH public key validated (${#winc_ssh_key} characters)"
 }
 
 # Export cloud provider credentials from cluster secrets

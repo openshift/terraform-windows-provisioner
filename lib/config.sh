@@ -7,7 +7,8 @@ declare -r USER_CONFIG_FILE="${HOME}/.config/byoh-provisioner/config"
 declare -r PROJECT_CONFIG_FILE="$(dirname "$(dirname "${BASH_SOURCE[0]}")")/configs/defaults.conf"
 
 # Track which variables were set in environment before loading configs
-declare -A ENV_VARS_BEFORE_CONFIG
+# Using space-delimited string for bash 3.x compatibility (no associative arrays)
+ENV_VARS_BEFORE_CONFIG=""
 
 # Load configuration from file
 # Arguments:
@@ -17,15 +18,24 @@ function load_config_file() {
 
     if [[ -f "$config_file" ]]; then
         log "Loading configuration from: $config_file"
-        # Source the file in a safe way (only export variables)
-        while IFS='=' read -r key value; do
+        # Source the file safely - only lines with valid KEY=VALUE format
+        while IFS= read -r line; do
             # Skip comments and empty lines
-            [[ "$key" =~ ^#.*$ ]] && continue
-            [[ -z "$key" ]] && continue
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
+            [[ -z "$line" ]] && continue
 
-            # Remove leading/trailing whitespace
-            key=$(echo "$key" | xargs)
-            value=$(echo "$value" | xargs)
+            # Only process lines with = sign (valid KEY=VALUE format)
+            [[ ! "$line" =~ = ]] && continue
+
+            # Extract key and value
+            key="${line%%=*}"
+            value="${line#*=}"
+
+            # Remove leading/trailing whitespace from key using sed
+            key=$(echo "$key" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
+            # Skip if key is empty
+            [[ -z "$key" ]] && continue
 
             # Remove quotes from value if present
             value="${value%\"}"
@@ -35,10 +45,10 @@ function load_config_file() {
 
             # Only export if not set in environment BEFORE config loading
             # This allows user config to override defaults, but environment to override everything
-            if [[ -z "${ENV_VARS_BEFORE_CONFIG[$key]:-}" ]]; then
+            if [[ ! " ${ENV_VARS_BEFORE_CONFIG} " =~ " ${key} " ]]; then
                 export "$key=$value"
             fi
-        done < <(grep -v '^[[:space:]]*$' "$config_file")
+        done < "$config_file"
     fi
 }
 
@@ -71,6 +81,7 @@ function get_config() {
 function load_all_configs() {
     # Capture environment variables before loading config files
     # These will have highest priority and won't be overwritten
+    # Using space-delimited string for bash 3.x compatibility (no associative arrays)
     local config_vars=(
         "BYOH_LOG_LEVEL" "BYOH_TMP_DIR" "TERRAFORM_MIN_VERSION"
         "WINDOWS_CONTAINER_LOGS_PORT" "WMCO_NAMESPACE" "WMCO_IDENTIFIER_TYPE"
@@ -87,7 +98,7 @@ function load_all_configs() {
 
     for var in "${config_vars[@]}"; do
         if [[ -n "${!var:-}" ]]; then
-            ENV_VARS_BEFORE_CONFIG[$var]="${!var}"
+            ENV_VARS_BEFORE_CONFIG="${ENV_VARS_BEFORE_CONFIG} ${var}"
         fi
     done
 
@@ -101,7 +112,7 @@ function load_all_configs() {
         load_config_file "$USER_CONFIG_FILE"
     fi
 
-    # Environment variables take highest priority (already captured above)
+    # Configuration priority: Environment Variables > User Config > Project Config
     log "Configuration loaded successfully"
 }
 

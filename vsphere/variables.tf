@@ -75,3 +75,10 @@ variable ssh_public_key {
     type        = string
     description = "SSH public key for remote access to Windows instances"
 }
+
+# Networking Configuration
+variable "container_logs_port" {
+  type        = number
+  default     = 10250
+  description = "Container logs port for firewall rule"
+}

@@ -48,7 +48,7 @@ function handle_templates_dir() {
                     log "Removing existing directory: ${templates_dir}"
                     rm -rf "$templates_dir" || error "Failed to remove directory: ${templates_dir}"
                     mkdir -p "$templates_dir" || error "Failed to create directory: ${templates_dir}"
-                    cp -R "${script_dir}/${platform}/." "$templates_dir" || error "Failed to copy templates"
+                    cp -LR "${script_dir}/${platform}/." "$templates_dir" || error "Failed to copy templates"
                     ;;
                 "no")
                     log "Using existing directory: ${templates_dir}"
@@ -61,7 +61,7 @@ function handle_templates_dir() {
         else
             log "Creating templates directory: ${templates_dir}"
             mkdir -p "$templates_dir" || error "Failed to create directory: ${templates_dir}"
-            cp -R "${script_dir}/${platform}/." "$templates_dir" || error "Failed to copy templates"
+            cp -LR "${script_dir}/${platform}/." "$templates_dir" || error "Failed to copy templates"
         fi
     fi
 }
@@ -142,15 +142,30 @@ EOF
 
     log "ConfigMap file created: ${config_file}"
 
-    # Apply ConfigMap
+    # Apply or patch ConfigMap
     if oc get configmap windows-instances -n "$wmco_namespace" &>/dev/null; then
-        log "ConfigMap already exists, deleting and recreating..."
-        oc delete configmap windows-instances -n "$wmco_namespace" || log "Warning: Failed to delete existing ConfigMap"
+        log "ConfigMap already exists, patching with new entries..."
+
+        # Extract just the data section and apply as patch
+        for identifier in $identifiers; do
+            identifier="${identifier%\"}"
+            identifier="${identifier#\"}"
+
+            # Use strategic merge patch to add/update entries without removing others
+            oc patch configmap windows-instances -n "$wmco_namespace" \
+                --type merge \
+                -p "{\"data\":{\"${identifier}\":\"username=${username}\"}}" \
+                || error "Failed to patch ConfigMap for ${identifier}"
+
+            log "Patched ConfigMap entry: ${identifier}"
+        done
+
+        log "ConfigMap patched successfully with new entries"
+    else
+        log "ConfigMap does not exist, creating new one..."
+        oc create -f "$config_file" || error "Failed to create ConfigMap"
+        log "ConfigMap created successfully"
     fi
-
-    oc create -f "$config_file" || error "Failed to create ConfigMap"
-
-    log "ConfigMap created successfully"
 }
 
 # Run Terraform init
@@ -218,20 +233,18 @@ function cleanup_templates_dir() {
 function delete_configmap() {
     local templates_dir="$1"
 
-    log "Deleting ConfigMap..."
-
-    local config_file="${templates_dir}/byoh_cm.yaml"
-
-    if [[ ! -f "$config_file" ]]; then
-        log "ConfigMap file not found: ${config_file}"
-        return 0
-    fi
+    log "Deleting ConfigMap for destroyed instances..."
 
     local wmco_namespace
     wmco_namespace=$(get_wmco_namespace)
 
-    if [[ -n "$wmco_namespace" ]] && oc get configmap windows-instances -n "$wmco_namespace" &>/dev/null; then
-        oc delete -f "$config_file" || log "Warning: Failed to delete ConfigMap"
+    if [[ -z "$wmco_namespace" ]]; then
+        log "Warning: Failed to get WMCO namespace, skipping ConfigMap deletion"
+        return 0
+    fi
+
+    if oc get configmap windows-instances -n "$wmco_namespace" &>/dev/null; then
+        oc delete configmap windows-instances -n "$wmco_namespace" || log "Warning: Failed to delete ConfigMap"
         log "ConfigMap deleted successfully"
     else
         log "ConfigMap does not exist, skipping deletion"

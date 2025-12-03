@@ -1,18 +1,18 @@
 # BYOH Provisioner - Bring Your Own Host for Windows Nodes
 
-The BYOH Provisioner is a generic, configurable tool for provisioning and managing Windows worker nodes across multiple cloud platforms. This project provides automated BYOH (Bring Your Own Host) Windows node deployment for Kubernetes/OpenShift clusters with support for AWS, Azure, GCP, vSphere, Nutanix, and bare metal environments.
+The BYOH Provisioner is a tool for provisioning and managing Windows worker nodes across multiple cloud platforms. This project provides automated BYOH (Bring Your Own Host) Windows node deployment for Kubernetes/OpenShift clusters with support for AWS, Azure, GCP, vSphere, Nutanix, and bare metal environments.
 
-**Note:** This tool is vendor-neutral and contains no hardcoded values. All configuration is derived from your OpenShift cluster or provided via parameters.
+All configuration is derived from your OpenShift cluster or provided via parameters.
 
 ## Features
 
-- **Multi-Cloud Support**: Deploy Windows nodes on AWS, Azure, GCP, vSphere, Nutanix, or bare metal
-- **Zero Hardcoded Values**: All configuration via files, environment variables, or auto-detection
-- **Modular Architecture**: Clean separation of concerns with library modules
-- **Flexible Configuration**: Multi-source configuration with priority ordering
-- **Automated Credential Management**: Seamless integration with cluster secrets
-- **Comprehensive Documentation**: Detailed guides for all platforms
-- **Fully Parameterized**: Customize instance types, disk sizes, tags, and more
+- Multi-cloud support: AWS, Azure, GCP, vSphere, Nutanix, bare metal
+- Generic bootstrap template: Single cross-platform Windows bootstrap script
+- Automated credential management: Extraction from cluster secrets
+- Modular architecture: Clean separation of concerns with library modules
+- Configuration priority: Environment variables, user config, project config, defaults
+- Platform auto-detection from cluster configuration
+- Fully parameterized: Customize instance types, disk sizes, tags
 
 ## Prerequisites
 
@@ -28,7 +28,7 @@ The BYOH Provisioner is a generic, configurable tool for provisioning and managi
 ### 1. Install the Tool
 
 ```bash
-git clone https://github.com/<your-org>/terraform-windows-provisioner.git
+git clone https://github.com/openshift/terraform-windows-provisioner.git
 cd terraform-windows-provisioner
 chmod +x byoh.sh
 ```
@@ -72,12 +72,12 @@ Optional configuration:
 
 | Platform | Status | Auto-Credentials | Notes |
 |----------|--------|------------------|-------|
-| **AWS** | ✅ Supported | Yes | Credentials from cluster secrets |
-| **Azure** | ✅ Supported | Yes | Instance names limited to 13 chars |
-| **GCP** | ✅ Supported | Yes | Service account integration |
-| **vSphere** | ✅ Supported | Yes | Template-based provisioning |
-| **Nutanix** | ✅ Supported | Yes | Prism Central integration |
-| **Bare Metal** | ✅ Supported | Local AWS config | Uses AWS credentials |
+| **AWS** | Supported | Yes | Credentials from cluster secrets |
+| **Azure** | Supported | Yes | Instance names limited to 13 chars |
+| **GCP** | Supported | Yes | Service account integration |
+| **vSphere** | Supported | Yes | Template-based provisioning |
+| **Nutanix** | Supported | Yes | Prism Central integration |
+| **Bare Metal** | Supported | Local AWS config | Uses AWS credentials |
 
 ## Usage
 
@@ -145,11 +145,21 @@ The provisioner uses **Linux worker nodes** as the source of truth for infrastru
 
 | Platform | Priority |
 |----------|----------|
-| **AWS** | Windows MachineSet → AWS API query → User config `AWS_WINDOWS_AMI` |
+| **AWS** | User config `AWS_WINDOWS_AMI` → AWS API query (version-specific) → Windows MachineSet |
 | **Azure** | User config `AZURE_WINDOWS_SKU` → Windows MachineSet → Default SKU (uses latest image) |
 | **GCP** | Uses image family (always latest) |
 | **vSphere** | User config `VSPHERE_WINDOWS_TEMPLATE` → Windows MachineSet → Error |
 | **Nutanix** | User config `NUTANIX_WINDOWS_IMAGE` → Windows MachineSet → Error |
+
+### Generic Bootstrap Template
+
+All platforms use a single generic Windows bootstrap script located at `lib/windows-vm-bootstrap.tf`. Platform-specific directories contain symlinks to this generic template, ensuring consistent behavior across all cloud providers.
+
+**Key features:**
+- GCP's `sysprep-specialize-script-ps1` accepts `<powershell>` XML tags
+- Single source of truth for Windows bootstrap logic
+- Includes only the mandatory Administrator password fix
+- Simplified maintenance (update one file, all platforms benefit)
 
 ## Configuration
 
@@ -191,40 +201,18 @@ See [configs/examples/](configs/examples/) for platform-specific examples:
 | `AZURE_2019_IMAGE_VERSION` | Azure Win 2019 image version | latest |
 | `AZURE_2022_IMAGE_VERSION` | Azure Win 2022 image version | latest |
 | `AWS_INSTANCE_TYPE` | AWS instance type | m5a.large |
+| `AWS_WINDOWS_AMI` | AWS Windows AMI override | (auto-detected) |
 | `AWS_ROOT_VOLUME_SIZE` | AWS root volume size (GB) | 120 |
 | `ENVIRONMENT_TAG` | Environment tag for resources | production |
 | `MANAGED_BY_TAG` | Managed-by tag for resources | terraform |
-
-**Configuration Priority (highest to lowest)**:
-1. **Environment Variables** - Set via `export` or inline (e.g., `WMCO_IDENTIFIER_TYPE=dns ./byoh.sh apply`)
-2. **User Config File** - `~/.config/byoh-provisioner/config` (personal overrides)
-3. **Project Config File** - `configs/defaults.conf` (team-wide defaults)
-4. **Built-in Defaults** - Hardcoded fallback values
-
-**Notes:**
-- `WMCO_NAMESPACE` is auto-detected by searching for the `windows-machine-config-operator` deployment. Override via environment variable or config file if using a custom namespace.
-- `WMCO_IDENTIFIER_TYPE` controls how instances are identified in the ConfigMap. Set to `dns` for DNS hostnames or `ip` (default) for IP addresses. Useful for automation tests or environments requiring DNS-based identification.
-
-**Example: Using DNS identifiers instead of IP addresses**
-```bash
-# Method 1: Environment variable (highest priority)
-export WMCO_IDENTIFIER_TYPE=dns
-./byoh.sh apply mywindows 2
-
-# Method 2: User config file (overrides project defaults)
-echo "WMCO_IDENTIFIER_TYPE=dns" >> ~/.config/byoh-provisioner/config
-./byoh.sh apply mywindows 2
-
-# Method 3: Inline environment variable
-WMCO_IDENTIFIER_TYPE=dns ./byoh.sh apply mywindows 2
-```
 
 ## Platform-Specific Notes
 
 ### AWS
 
 - Credentials automatically extracted from cluster secrets
-- Supports custom AMI selection
+- AMI selection: User override → AWS API (version-specific) → MachineSet
+- AWS CLI recommended for automatic version-specific AMI discovery
 - Configurable instance types and volume sizes
 
 ### Azure
@@ -241,6 +229,7 @@ WMCO_IDENTIFIER_TYPE=dns ./byoh.sh apply mywindows 2
 - Service account credentials from cluster secrets
 - Zone and region auto-detected
 - Supports custom machine types
+- Bootstrap accepts `<powershell>` tags (enables generic template)
 
 ### vSphere
 
@@ -266,26 +255,64 @@ This project uses a modular architecture with separated concerns:
 
 ```
 terraform-windows-provisioner/
-├── byoh.sh                 # Main entry point
-├── lib/                    # Library modules
-│   ├── config.sh          # Configuration loading
-│   ├── credentials.sh     # Credential management
-│   ├── platform.sh        # Platform detection & config
-│   ├── terraform.sh       # Terraform operations
-│   └── validation.sh      # Input validation
-├── configs/               # Configuration files
-│   ├── defaults.conf      # Default values
-│   └── examples/          # Platform-specific examples
-└── platforms/             # Platform-specific Terraform
+├── byoh.sh                      # Main entry point
+├── lib/                         # Library modules
+│   ├── config.sh               # Configuration loading (bash 3.x compatible)
+│   ├── credentials.sh          # Credential management
+│   ├── platform.sh             # Platform detection & tfvars generation
+│   ├── terraform.sh            # Terraform operations (cp -LR for symlinks)
+│   ├── validation.sh           # Input validation
+│   └── windows-vm-bootstrap.tf # Generic Windows bootstrap (all platforms)
+├── configs/                    # Configuration files
+│   ├── defaults.conf           # Default values
+│   └── examples/               # Platform-specific examples
+└── <platform>/                 # Platform-specific Terraform
     ├── aws/
+    │   ├── main.tf
+    │   ├── variables.tf
+    │   └── windows-vm-bootstrap.tf → ../lib/windows-vm-bootstrap.tf
     ├── azure/
+    │   ├── main.tf
+    │   ├── variables.tf
+    │   └── windows-vm-bootstrap.tf → ../lib/windows-vm-bootstrap.tf
     ├── gcp/
+    │   ├── main.tf
+    │   ├── variables.tf
+    │   └── windows-vm-bootstrap.tf → ../lib/windows-vm-bootstrap.tf
     ├── vsphere/
     ├── nutanix/
     └── none/
 ```
 
 ## Troubleshooting
+
+### Windows SSH Connectivity Issues
+
+If WMCO cannot connect to Windows nodes with "unable to connect to Windows VM: timed out" errors, check the bootstrap logs.
+
+**GCP - Check Serial Port Logs**:
+```bash
+# Check if Administrator password was configured
+gcloud compute instances get-serial-port-output <vm-name> --zone <zone> | grep "Administrator account configured"
+
+# Check if SSH services are running
+gcloud compute instances get-serial-port-output <vm-name> --zone <zone> | grep -A5 "sshd"
+```
+
+**Azure - Check VM Boot Diagnostics**:
+```bash
+# Get VM status
+az vm get-instance-view --name <vm-name> --resource-group <rg> --query "instanceView.statuses"
+
+# Check extensions
+az vm extension list --vm-name <vm-name> --resource-group <rg>
+```
+
+**Verify SSH from Bastion**:
+```bash
+bastion_host=$(oc get service --all-namespaces -l run=ssh-bastion -o go-template='{{ with (index (index .items 0).status.loadBalancer.ingress 0) }}{{ or .hostname .ip }}{{end}}')
+ssh -i ~/.ssh/openshift-qe.pem -t -o StrictHostKeyChecking=no -o ProxyCommand="ssh -i ~/.ssh/openshift-qe.pem -A -o StrictHostKeyChecking=no -W %h:%p core@${bastion_host}" Administrator@<windows-ip> 'powershell'
+```
 
 ### Check Cluster Credentials
 
@@ -328,12 +355,11 @@ export BYOH_LOG_LEVEL=DEBUG
 
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on:
+We welcome contributions! Please:
 
-- Code of conduct
-- Development setup
-- Pull request process
-- Testing requirements
+1. Follow existing code style and patterns
+2. Test changes on multiple platforms
+3. Update documentation
 
 ## Security
 
@@ -347,28 +373,18 @@ Apache License 2.0. See [LICENSE](LICENSE) for details.
 
 Version: 1.0.0
 
-This is a production-ready, vendor-neutral project suitable for upstream use.
+This is a vendor-neutral tool suitable for upstream use in OpenShift CI workflows.
 
 ## Support
 
 - **Issues**: Report bugs or request features via [GitHub Issues](https://github.com/openshift/terraform-windows-provisioner/issues)
 - **Documentation**: See [docs/](docs/) for comprehensive guides
-- **Examples**: See [configs/examples/](configs/examples/) for configuration examples
 
 ## Acknowledgments
 
-This project is designed to work seamlessly with:
+This project works with:
 - OpenShift Windows Container Support
 - Windows Machine Config Operator (WMCO)
 - Kubernetes Windows node support
 
-## Roadmap
-
-- [ ] Additional cloud platform support
-- [ ] Enhanced monitoring and metrics
-- [ ] Integration tests for all platforms
-- [ ] Helm chart for Kubernetes deployment
-- [ ] Web UI for configuration
-
 ---
-

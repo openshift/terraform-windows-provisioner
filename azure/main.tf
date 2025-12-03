@@ -92,10 +92,16 @@ resource "azurerm_windows_virtual_machine" "win_server" {
   }
 }
 
+# Wait for VM to fully boot before running extension
+resource "time_sleep" "wait_for_vm_boot" {
+  depends_on = [azurerm_windows_virtual_machine.win_server]
+  create_duration = "120s"
+}
+
 # VM Extension for Configuration
 resource "azurerm_virtual_machine_extension" "configure-byoh" {
   count                = var.winc_number_workers
-  depends_on           = [azurerm_windows_virtual_machine.win_server]
+  depends_on           = [time_sleep.wait_for_vm_boot]
   name                 = "configure-byoh"
   virtual_machine_id   = azurerm_windows_virtual_machine.win_server[count.index].id
   publisher            = "Microsoft.Compute"

@@ -65,12 +65,12 @@ All platforms are supported automatically:
 
 | Platform | Support | Credential Source |
 |----------|---------|-------------------|
-| AWS | ✅ | `CLUSTER_PROFILE_DIR/.awscred` |
-| Azure | ✅ | `CLUSTER_PROFILE_DIR/osServicePrincipal.json` |
-| GCP | ✅ | `CLUSTER_PROFILE_DIR/gce.json` |
-| vSphere | ✅ | Cluster secrets |
-| Nutanix | ✅ | Cluster secrets |
-| Platform "none" | ✅ | Local AWS credentials |
+| AWS | | `CLUSTER_PROFILE_DIR/.awscred` |
+| Azure | | `CLUSTER_PROFILE_DIR/osServicePrincipal.json` |
+| GCP | | `CLUSTER_PROFILE_DIR/gce.json` |
+| vSphere | | Cluster secrets |
+| Nutanix | | Cluster secrets |
+| Platform "none" | | Local AWS credentials |
 
 Credentials are automatically detected from the cluster profile provided by Prow.
 

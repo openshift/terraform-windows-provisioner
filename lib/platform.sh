@@ -80,6 +80,7 @@ function write_aws_tfvars() {
     local byoh_name="$2"
     local num_byoh="$3"
     local win_version="${4:-2022}"
+    local skip_ami_lookup="${5:-false}"  # Set to true for destroy operations
 
     local tfvars_file="${templates_dir}/terraform.auto.tfvars"
 
@@ -91,41 +92,62 @@ function write_aws_tfvars() {
     local region=$(echo "$linux_machine_spec" | jq -r '.providerSpec.value.placement.region')
     local cluster_name=$(oc get machines -n openshift-machine-api -l machine.openshift.io/cluster-api-machine-role=worker -o=jsonpath='{.items[0].metadata.labels.machine\.openshift\.io/cluster-api-cluster}')
 
-    # Get Windows AMI (priority: MachineSet > AWS API > Config)
-    local windows_ami=$(oc get machineset.machine.openshift.io -n openshift-machine-api -o=jsonpath="{.items[?(@.spec.template.metadata.labels.machine\.openshift\.io\/os-id=='Windows')].spec.template.spec.providerSpec.value.ami.id}" 2>/dev/null)
+    # Get Windows AMI (skip for destroy operations - not needed, just use dummy)
+    local windows_ami=""
+    if [[ "$skip_ami_lookup" == "true" ]]; then
+        log "Skipping AMI lookup for destroy operation (using dummy value)"
+        windows_ami="ami-dummy-not-used-for-destroy"
+    else
+        log "Requested Windows version: ${win_version}"
 
-    # If no Windows MachineSet or AMI not found, try other methods
-    if [[ -z "$windows_ami" ]]; then
-        log "Windows MachineSet not found or AMI not available. Attempting AWS API query for Windows Server ${win_version}..."
+        # Check user override first to allow version-specific AMI selection
+        windows_ami=$(get_config "AWS_WINDOWS_AMI" "")
+        if [[ -n "$windows_ami" ]]; then
+            log "Using user-configured AMI: ${windows_ami}"
+        fi
 
-        # Try AWS API if aws CLI is available
-        if command -v aws &> /dev/null; then
-            local image_pattern="Windows_Server-${win_version}-English-Full-Base"
+        # If no user override, try AWS API query for specific version
+        if [[ -z "$windows_ami" ]]; then
+            log "Querying AWS API for Windows Server ${win_version} AMI in region ${region}..."
 
-            windows_ami=$(PYTHONWARNINGS="ignore::DeprecationWarning" aws ec2 describe-images \
-                --filters "Name=name,Values=${image_pattern}*" \
-                --region "$region" \
-                --query 'sort_by(Images, &CreationDate)[-1].[ImageId]' \
-                --output text 2>/dev/null)
+            if command -v aws &> /dev/null; then
+                local image_pattern="Windows_Server-${win_version}-English-Full-Base"
+                log "Search pattern: ${image_pattern}*"
 
-            if [[ -n "$windows_ami" && "$windows_ami" != "None" ]]; then
-                log "Found Windows AMI via AWS API: ${windows_ami}"
+                # Add timeout to prevent hanging (30 seconds)
+                windows_ami=$(PYTHONWARNINGS='ignore::DeprecationWarning' timeout 30s aws ec2 describe-images \
+                    --filters "Name=name,Values=${image_pattern}*" \
+                    --region "${region}" \
+                    --query 'sort_by(Images, &CreationDate)[-1].[ImageId]' \
+                    --output text 2>/dev/null || echo "")
+
+                if [[ -n "$windows_ami" && "$windows_ami" != "None" ]]; then
+                    log "Selected Windows ${win_version} AMI: ${windows_ami}"
+                else
+                    log "AWS API query failed or timed out"
+                    windows_ami=""
+                fi
             else
-                windows_ami=""
+                log "AWS CLI not available"
             fi
         fi
 
-        # Final fallback to user configuration
+        # Fallback to MachineSet AMI if AWS CLI not available or failed
         if [[ -z "$windows_ami" ]]; then
-            log "AWS CLI not available or query failed. Checking configuration..."
-            windows_ami=$(get_config "AWS_WINDOWS_AMI" "")
+            log "AWS CLI query failed. Attempting to get AMI from Windows MachineSet..."
+            windows_ami=$(oc get machineset.machine.openshift.io -n openshift-machine-api -o=jsonpath="{.items[?(@.spec.template.metadata.labels.machine\.openshift\.io\/os-id=='Windows')].spec.template.spec.providerSpec.value.ami.id}" 2>/dev/null)
 
-            if [[ -z "$windows_ami" ]]; then
-                error "Windows AMI not found. Please either:
-  1. Create a Windows MachineSet, OR
-  2. Install AWS CLI for automatic AMI discovery, OR
-  3. Set AWS_WINDOWS_AMI in your configuration"
+            if [[ -n "$windows_ami" ]]; then
+                log "Found Windows AMI from MachineSet: ${windows_ami}"
             fi
+        fi
+
+        # Final error if nothing works
+        if [[ -z "$windows_ami" ]]; then
+            error "Windows AMI not found. Please either:
+  1. Install AWS CLI for automatic AMI discovery, OR
+  2. Set AWS_WINDOWS_AMI in your configuration, OR
+  3. Create a Windows MachineSet"
         fi
     fi
 
@@ -245,8 +267,17 @@ function write_azure_tfvars() {
     local managed_by=$(get_config "MANAGED_BY_TAG" "terraform")
     local container_port=$(get_config "WINDOWS_CONTAINER_LOGS_PORT" "10250")
 
-    # Get image version (optional - defaults to latest)
-    local image_version=$(get_config "AZURE_WINDOWS_IMAGE_VERSION" "latest")
+    # Get image version (priority: User Config > MachineSet > Default "latest")
+    local image_version=$(get_config "AZURE_WINDOWS_IMAGE_VERSION" "")
+
+    if [[ -z "$image_version" ]]; then
+        image_version=$(oc get machineset.machine.openshift.io -n openshift-machine-api -o=jsonpath="{.items[?(@.spec.template.metadata.labels.machine\.openshift\.io\/os-id=='Windows')].spec.template.spec.providerSpec.value.image.version}" 2>/dev/null)
+    fi
+
+    if [[ -z "$image_version" ]]; then
+        log "Using default image version: latest"
+        image_version="latest"
+    fi
 
     cat > "${tfvars_file}" << EOF
 # Auto-generated Terraform variables for Azure
@@ -473,12 +504,16 @@ function get_azure_terraform_args() {
     local managed_by=$(get_config "MANAGED_BY_TAG" "terraform")
     local container_port=$(get_config "WINDOWS_CONTAINER_LOGS_PORT" "10250")
 
-    # Determine image version based on Windows version
-    local image_version
-    if [[ "$win_version" == "2019" ]]; then
-        image_version=$(get_config "AZURE_2019_IMAGE_VERSION" "latest")
-    else
-        image_version=$(get_config "AZURE_2022_IMAGE_VERSION" "latest")
+    # Get image version (priority: User Config > MachineSet > Default "latest")
+    local image_version=$(get_config "AZURE_WINDOWS_IMAGE_VERSION" "")
+
+    if [[ -z "$image_version" ]]; then
+        image_version=$(oc get machineset.machine.openshift.io -n openshift-machine-api -o=jsonpath="{.items[?(@.spec.template.metadata.labels.machine\.openshift\.io\/os-id=='Windows')].spec.template.spec.providerSpec.value.image.version}" 2>/dev/null)
+    fi
+
+    if [[ -z "$image_version" ]]; then
+        log "Using default image version: latest"
+        image_version="latest"
     fi
 
     echo "--var winc_number_workers=${num_byoh} --var winc_machine_hostname=${win_machine_hostname} --var winc_instance_name=${byoh_name} --var winc_resource_group=${resource_group} --var winc_resource_prefix=${resource_prefix} --var winc_worker_sku=${sku} --var winc_instance_type='${instance_type}' --var admin_username='${admin_username}' --var admin_password='${admin_password}' --var ssh_public_key='${ssh_key}' --var vm_extension_handler_version='${vm_extension_version}' --var windows_image_version='${image_version}' --var environment_tag='${env_tag}' --var managed_by_tag='${managed_by}' --var container_logs_port=${container_port}"

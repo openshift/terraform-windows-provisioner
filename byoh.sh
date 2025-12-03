@@ -194,7 +194,7 @@ function main() {
             # Write tfvars file for the platform
             case "$platform" in
                 "aws")
-                    write_aws_tfvars "$templates_dir" "$byoh_name" "$num_byoh"
+                    write_aws_tfvars "$templates_dir" "$byoh_name" "$num_byoh" "$win_version"
                     ;;
                 "gcp")
                     write_gcp_tfvars "$templates_dir" "$byoh_name" "$num_byoh"
@@ -217,9 +217,17 @@ function main() {
             esac
 
             terraform_apply "$templates_dir"
-            create_configmap "$templates_dir" "$platform"
-            log "Provisioning completed successfully!"
-            log "Windows instances are ready and registered with WMCO"
+
+            # Create ConfigMap unless explicitly skipped
+            if [[ "$(get_config 'SKIP_CONFIGMAP_CREATION' 'false')" != "true" ]]; then
+                create_configmap "$templates_dir" "$platform"
+                log "Provisioning completed successfully!"
+                log "Windows instances are ready and registered with WMCO"
+            else
+                log "Provisioning completed successfully!"
+                log "ConfigMap creation skipped (SKIP_CONFIGMAP_CREATION=true)"
+                log "Run './byoh.sh configmap' to create ConfigMap manually"
+            fi
             ;;
 
         "destroy")
@@ -227,6 +235,21 @@ function main() {
             if [[ ! -d "$templates_dir" ]]; then
                 error "Directory ${templates_dir} not found. Did you run ./byoh.sh apply first?"
             fi
+
+            # Check if terraform state file exists
+            if [[ ! -f "${templates_dir}/terraform.tfstate" ]]; then
+                log "WARNING: terraform.tfstate not found. Terraform may not have anything to destroy."
+            fi
+
+            # Regenerate minimal tfvars for destroy (terraform needs vars defined, but values aren't used)
+            case $platform in
+                "aws")
+                    write_aws_tfvars "$templates_dir" "$byoh_name" "$num_byoh" "$win_version" "true"
+                    ;;
+                *)
+                    # Other platforms don't need special handling
+                    ;;
+            esac
 
             delete_configmap "$templates_dir"
             terraform_destroy "$templates_dir"
