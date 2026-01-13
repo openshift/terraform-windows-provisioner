@@ -1,0 +1,27 @@
+# vSphere-Specific Configuration Example
+# This file shows vSphere-specific configuration options
+
+# Windows Credentials (Required)
+WINC_ADMIN_PASSWORD="YourSecurePassword123!"
+WINC_SSH_PUBLIC_KEY="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... your-email@example.com"
+
+# vSphere Configuration (most values auto-detected from cluster)
+# Template names for different Windows versions
+VSPHERE_2019_TEMPLATE=Windows-Server-2019-Template
+VSPHERE_2022_TEMPLATE=Windows-Server-2022-Template
+
+# vSphere VM Resources
+VSPHERE_NUM_CPUS=4
+VSPHERE_MEMORY_MB=8192
+VSPHERE_DISK_SIZE_GB=120
+
+# Instance Tags
+ENVIRONMENT_TAG=production
+MANAGED_BY_TAG=terraform
+
+# Windows Configuration
+WINDOWS_ADMIN_USERNAME=Administrator
+WINDOWS_CONTAINER_LOGS_PORT=10250
+
+# Note: vCenter credentials are automatically loaded from cluster secrets
+# Ensure your cluster has proper vSphere credentials configured

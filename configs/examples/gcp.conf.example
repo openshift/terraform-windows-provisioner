@@ -1,0 +1,22 @@
+# GCP-Specific Configuration Example
+# This file shows GCP-specific configuration options
+
+# Windows Credentials (Required)
+WINC_ADMIN_PASSWORD="YourSecurePassword123!"
+WINC_SSH_PUBLIC_KEY="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... your-email@example.com"
+
+# GCP Instance Configuration
+GCP_MACHINE_TYPE=n1-standard-2
+GCP_BOOT_DISK_SIZE_GB=120
+
+# GCP Region and Zone (optional - auto-detected from cluster if not set)
+# GCP_REGION=us-central1
+# GCP_ZONE=us-central1-a
+
+# Instance Tags
+ENVIRONMENT_TAG=production
+MANAGED_BY_TAG=terraform
+
+# Windows Configuration
+WINDOWS_ADMIN_USERNAME=Administrator
+WINDOWS_CONTAINER_LOGS_PORT=10250
