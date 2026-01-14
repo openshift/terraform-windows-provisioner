@@ -3,6 +3,15 @@
 
 FROM registry.ci.openshift.org/ocp/4.17:cli AS builder
 
+# Install dependencies first
+RUN yum install -y \
+    unzip \
+    jq \
+    git \
+    bash \
+    which \
+    && yum clean all
+
 # Install Terraform
 ARG TERRAFORM_VERSION=1.9.5
 RUN curl -fsSL https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip -o terraform.zip \
@@ -10,14 +19,6 @@ RUN curl -fsSL https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/ter
     && mv terraform /usr/local/bin/ \
     && rm terraform.zip \
     && terraform version
-
-# Install additional dependencies
-RUN yum install -y \
-    jq \
-    git \
-    bash \
-    which \
-    && yum clean all
 
 FROM registry.ci.openshift.org/ocp/4.17:cli
 
@@ -31,22 +32,22 @@ RUN yum install -y \
     which \
     && yum clean all
 
-# Copy provisioner scripts
-COPY byoh.sh /usr/local/bin/byoh.sh
-COPY lib/ /usr/local/lib/byoh-provisioner/lib/
-COPY configs/ /usr/local/share/byoh-provisioner/configs/
-COPY aws/ /usr/local/share/byoh-provisioner/aws/
-COPY azure/ /usr/local/share/byoh-provisioner/azure/
-COPY gcp/ /usr/local/share/byoh-provisioner/gcp/
-COPY vsphere/ /usr/local/share/byoh-provisioner/vsphere/
-COPY nutanix/ /usr/local/share/byoh-provisioner/nutanix/
-COPY none/ /usr/local/share/byoh-provisioner/none/
-
-# Make byoh.sh executable
-RUN chmod +x /usr/local/bin/byoh.sh
-
 # Set working directory
 WORKDIR /usr/local/share/byoh-provisioner
+
+# Copy provisioner scripts
+COPY byoh.sh ./byoh.sh
+COPY lib/ ./lib/
+COPY configs/ ./configs/
+COPY aws/ ./aws/
+COPY azure/ ./azure/
+COPY gcp/ ./gcp/
+COPY vsphere/ ./vsphere/
+COPY nutanix/ ./nutanix/
+COPY none/ ./none/
+
+# Make byoh.sh executable and create symlink in PATH
+RUN chmod +x ./byoh.sh && ln -s /usr/local/share/byoh-provisioner/byoh.sh /usr/local/bin/byoh.sh
 
 # Set environment variables for CI
 ENV BYOH_TMP_DIR=/tmp/terraform_byoh
@@ -56,7 +57,7 @@ ENV CI=true
 RUN terraform version && \
     oc version --client && \
     jq --version && \
-    /usr/local/bin/byoh.sh help
+    ./byoh.sh help
 
 # Default command
 ENTRYPOINT ["/usr/local/bin/byoh.sh"]
