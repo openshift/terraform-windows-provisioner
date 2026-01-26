@@ -235,8 +235,33 @@ function load_windows_credentials() {
             log "Falling back to automatic SSH key extraction..."
             winc_ssh_key=""  # Clear the invalid key
         else
-            ssh_key_source="user config/environment"
-            log "Using user-provided SSH key from ${ssh_key_source}"
+            # Verify user-provided key matches WMCO cloud-private-key secret
+            log "User-provided SSH key found. Verifying against WMCO cloud-private-key secret..."
+            local wmco_ssh_key=$(get_ssh_public_key_from_secret || true)
+
+            if [[ -n "$wmco_ssh_key" ]]; then
+                if [[ "$winc_ssh_key" == "$wmco_ssh_key" ]]; then
+                    log "✅ User-provided SSH key matches WMCO cloud-private-key secret"
+                    ssh_key_source="user config/environment (verified against WMCO)"
+                else
+                    log "⚠️  WARNING: User-provided SSH key DOES NOT MATCH WMCO cloud-private-key secret!"
+                    log "User key fingerprint:"
+                    echo "$winc_ssh_key" | ssh-keygen -lf - 2>/dev/null | sed 's/^/  /' || log "  (unable to generate fingerprint)"
+                    log "WMCO key fingerprint:"
+                    echo "$wmco_ssh_key" | ssh-keygen -lf - 2>/dev/null | sed 's/^/  /' || log "  (unable to generate fingerprint)"
+                    log ""
+                    log "This WILL cause BYOH nodes to fail to join the cluster!"
+                    log "WMCO will not be able to SSH to the instances using the configured authorized_keys."
+                    log ""
+                    log "Recommendation: Use WMCO's cloud-private-key automatically (this is the only key that will work)"
+                    log "Using WMCO cloud-private-key secret automatically..."
+                    winc_ssh_key="$wmco_ssh_key"
+                    ssh_key_source="WMCO cloud-private-key secret (auto-selected due to mismatch)"
+                fi
+            else
+                log "Unable to extract WMCO key for verification. Using user-provided key without verification."
+                ssh_key_source="user config/environment (unverified)"
+            fi
         fi
     fi
 
