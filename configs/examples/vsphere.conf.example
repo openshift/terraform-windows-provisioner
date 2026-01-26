@@ -6,9 +6,12 @@ WINC_ADMIN_PASSWORD="YourSecurePassword123!"
 WINC_SSH_PUBLIC_KEY="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... your-email@example.com"
 
 # vSphere Configuration (most values auto-detected from cluster)
-# Template names for different Windows versions
-VSPHERE_2019_TEMPLATE=Windows-Server-2019-Template
-VSPHERE_2022_TEMPLATE=Windows-Server-2022-Template
+# Windows template path (use the template you want to clone from)
+# Examples:
+#   VSPHERE_WINDOWS_TEMPLATE=Windows-Server-2019-Template
+#   VSPHERE_WINDOWS_TEMPLATE=Windows-Server-2022-Template
+#   VSPHERE_WINDOWS_TEMPLATE=windows-golden-images/windows-server-2022-template-qe-20241104
+VSPHERE_WINDOWS_TEMPLATE=Windows-Server-2022-Template
 
 # vSphere VM Resources
 VSPHERE_NUM_CPUS=4

@@ -1,6 +1,12 @@
 # Instance name for the newly created Windows VM
 variable winc_instance_name {
-    type = string
+    type        = string
+    description = "Base name for Windows instances (will have -<index> suffix appended)"
+
+    validation {
+        condition     = length(var.winc_instance_name) <= 8
+        error_message = "Instance name must be 8 characters or less (Windows NetBIOS limit: 15 chars including '-<index>' suffix)."
+    }
 }
 
 # Hostname for one of the already existing cluster worker VM nodes

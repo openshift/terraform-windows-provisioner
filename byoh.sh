@@ -268,6 +268,7 @@ function main() {
 
         "arguments")
             log "Terraform arguments for ${platform}:"
+            local terraform_args=$(get_terraform_args "$platform" "$byoh_name" "$num_byoh" "$win_version")
             echo "$terraform_args"
             ;;
 
