@@ -66,6 +66,22 @@ resource "vsphere_virtual_machine" "win_server" {
 
   clone {
     template_uuid = data.vsphere_virtual_machine.template.id
+
+    customize {
+      windows_options {
+        computer_name  = "${var.winc_instance_name}-${count.index}"
+        admin_password = var.admin_password
+        run_once_command_list = [
+          "powershell.exe -ExecutionPolicy Bypass -Command \"Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False\"",
+          "powershell.exe -ExecutionPolicy Bypass -Command \"Install-WindowsFeature -Name Containers\"",
+        ]
+      }
+
+      network_interface {
+        ipv4_address = ""
+        ipv4_netmask = 0
+      }
+    }
   }
 
   enable_disk_uuid = true
