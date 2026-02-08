@@ -161,6 +161,7 @@ function write_aws_tfvars() {
     local env_tag=$(get_config "ENVIRONMENT_TAG" "production")
     local managed_by=$(get_config "MANAGED_BY_TAG" "terraform")
     local container_port=$(get_config "WINDOWS_CONTAINER_LOGS_PORT" "10250")
+    local fips_enabled=$(get_config "FIPS_ENABLED" "false")
 
     cat > "${tfvars_file}" << EOF
 # Auto-generated Terraform variables for AWS
@@ -179,6 +180,7 @@ root_volume_type      = "${volume_type}"
 environment_tag       = "${env_tag}"
 managed_by_tag        = "${managed_by}"
 container_logs_port   = ${container_port}
+fips_enabled          = ${fips_enabled}
 EOF
 }
 
@@ -204,6 +206,7 @@ function write_gcp_tfvars() {
     local instance_type=$(get_config "GCP_INSTANCE_TYPE" "n1-standard-4")
     local win_version=$(get_config "GCP_WINDOWS_VERSION" "windows-2022-core")
     local admin_username=$(get_config "GCP_ADMIN_USERNAME" "Administrator")
+    local fips_enabled=$(get_config "FIPS_ENABLED" "false")
 
     cat > "${tfvars_file}" << EOF
 # Auto-generated Terraform variables for GCP
@@ -218,6 +221,7 @@ winc_win_version      = "${win_version}"
 admin_username        = "${admin_username}"
 admin_password        = "${admin_password}"
 ssh_public_key        = "${ssh_key}"
+fips_enabled          = ${fips_enabled}
 EOF
 }
 
@@ -266,6 +270,7 @@ function write_azure_tfvars() {
     local env_tag=$(get_config "ENVIRONMENT_TAG" "production")
     local managed_by=$(get_config "MANAGED_BY_TAG" "terraform")
     local container_port=$(get_config "WINDOWS_CONTAINER_LOGS_PORT" "10250")
+    local fips_enabled=$(get_config "FIPS_ENABLED" "false")
 
     # Get image version (priority: User Config > MachineSet > Default "latest")
     local image_version=$(get_config "AZURE_WINDOWS_IMAGE_VERSION" "")
@@ -296,6 +301,7 @@ windows_image_version         = "${image_version}"
 environment_tag               = "${env_tag}"
 managed_by_tag                = "${managed_by}"
 container_logs_port           = ${container_port}
+fips_enabled                  = ${fips_enabled}
 EOF
 }
 
@@ -334,6 +340,7 @@ function write_vsphere_tfvars() {
     local admin_username=$(get_user_name "vsphere")
     local admin_password=$(get_config "WINC_ADMIN_PASSWORD")
     local ssh_key=$(get_config "WINC_SSH_PUBLIC_KEY")
+    local fips_enabled=$(get_config "FIPS_ENABLED" "false")
 
     cat > "${tfvars_file}" << EOF
 # Auto-generated Terraform variables for vSphere
@@ -351,6 +358,7 @@ vsphere_server        = "${VSPHERE_SERVER}"
 admin_username        = "${admin_username}"
 admin_password        = "${admin_password}"
 ssh_public_key        = "${ssh_key}"
+fips_enabled          = ${fips_enabled}
 EOF
 }
 
@@ -391,6 +399,7 @@ function write_nutanix_tfvars() {
     local admin_username=$(get_user_name "nutanix")
     local admin_password=$(get_config "WINC_ADMIN_PASSWORD")
     local ssh_key=$(get_config "WINC_SSH_PUBLIC_KEY")
+    local fips_enabled=$(get_config "FIPS_ENABLED" "false")
 
     cat > "${tfvars_file}" << EOF
 # Auto-generated Terraform variables for Nutanix
@@ -407,6 +416,7 @@ nutanix_password      = "${NUTANIX_PASSWORD}"
 admin_username        = "${admin_username}"
 admin_password        = "${admin_password}"
 ssh_public_key        = "${ssh_key}"
+fips_enabled          = ${fips_enabled}
 EOF
 }
 
@@ -440,6 +450,7 @@ function write_none_tfvars() {
     local admin_password=$(get_config "WINC_ADMIN_PASSWORD")
     local ssh_key=$(get_config "WINC_SSH_PUBLIC_KEY")
     local instance_type=$(get_config "AWS_INSTANCE_TYPE" "m5a.large")
+    local fips_enabled=$(get_config "FIPS_ENABLED" "false")
 
     cat > "${tfvars_file}" << EOF
 # Auto-generated Terraform variables for none/baremetal platform
@@ -456,6 +467,7 @@ winc_instance_type    = "${instance_type}"
 admin_username        = "${admin_username}"
 admin_password        = "${admin_password}"
 ssh_public_key        = "${ssh_key}"
+fips_enabled          = ${fips_enabled}
 EOF
 }
 
