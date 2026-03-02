@@ -419,21 +419,24 @@ function write_none_tfvars() {
 
     local tfvars_file="${templates_dir}/terraform.auto.tfvars"
 
-    # Get Linux node information for platform "none" (UPI/baremetal on AWS)
-    local linux_node=$(oc get nodes -l "node-role.kubernetes.io/worker,windowsmachineconfig.openshift.io/byoh!=true" -o=jsonpath="{.items[0].status.addresses[?(@.type=='Hostname')].address}")
+    # Get Linux worker node FQDN for platform "none" (UPI/baremetal)
+    # Try InternalDNS first (set by cloud controller manager with correct region-specific format)
+    local win_machine_hostname=$(oc get nodes -l "node-role.kubernetes.io/worker,windowsmachineconfig.openshift.io/byoh!=true" -o=jsonpath="{.items[0].status.addresses[?(@.type=='InternalDNS')].address}")
 
-    # Construct full DNS name or resolve it via nslookup
-    local win_machine_hostname
+    # Fallback to metadata.name if InternalDNS not available (e.g., UPI clusters)
+    if [[ -z "$win_machine_hostname" ]]; then
+        win_machine_hostname=$(oc get nodes -l "node-role.kubernetes.io/worker,windowsmachineconfig.openshift.io/byoh!=true" -o=jsonpath="{.items[0].metadata.name}")
+    fi
+
+    # Extract region from FQDN or use AWS_DEFAULT_REGION config
     local region
-    if [[ -n "${AWS_REGION:-}" ]]; then
-        # Use AWS_REGION if set
-        region="${AWS_REGION}"
-        win_machine_hostname="${linux_node}.${region}.compute.internal"
+    if [[ "$win_machine_hostname" =~ \.([^.]+)\.compute\.internal$ ]]; then
+        # Standard AWS regions: ip-10-x-x-x.<region>.compute.internal
+        region="${BASH_REMATCH[1]}"
     else
-        # Otherwise, resolve via nslookup
-        local ip_linux_node=$(oc get node ${linux_node} -o=jsonpath="{.status.addresses[?(@.type=='InternalIP')].address}")
-        win_machine_hostname=$(oc debug node/${linux_node} -- nslookup ${ip_linux_node} 2>/dev/null | grep -oP 'name = \K[^.]*.*' | sed 's/\.$//')
-        region=$(echo "${win_machine_hostname}" | cut -d "." -f2)
+        # us-east-1 uses .ec2.internal (no region in domain)
+        # Or FQDN doesn't match expected pattern - use config
+        region=$(get_config "AWS_DEFAULT_REGION" "us-east-1")
     fi
 
     local admin_username=$(get_user_name "none")
