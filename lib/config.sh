@@ -6,10 +6,6 @@
 declare -r USER_CONFIG_FILE="${HOME}/.config/byoh-provisioner/config"
 declare -r PROJECT_CONFIG_FILE="$(dirname "$(dirname "${BASH_SOURCE[0]}")")/configs/defaults.conf"
 
-# Track which variables were set in environment before loading configs
-# Using space-delimited string for bash 3.x compatibility (no associative arrays)
-ENV_VARS_BEFORE_CONFIG=""
-
 # Load configuration from file
 # Arguments:
 #   $1 - Configuration file path
@@ -43,9 +39,10 @@ function load_config_file() {
             value="${value%\'}"
             value="${value#\'}"
 
-            # Only export if not set in environment BEFORE config loading
-            # This allows user config to override defaults, but environment to override everything
-            if [[ ! " ${ENV_VARS_BEFORE_CONFIG} " =~ " ${key} " ]]; then
+            # Only export if not already set in environment
+            # This preserves environment variable priority over config files
+            # Uses indirect variable expansion ${!key} to check current value
+            if [[ -z "${!key:-}" ]]; then
                 export "$key=$value"
             fi
         done < "$config_file"
@@ -79,29 +76,6 @@ function get_config() {
 
 # Load all configuration files in priority order
 function load_all_configs() {
-    # Capture environment variables before loading config files
-    # These will have highest priority and won't be overwritten
-    # Using space-delimited string for bash 3.x compatibility (no associative arrays)
-    local config_vars=(
-        "BYOH_LOG_LEVEL" "BYOH_TMP_DIR" "TERRAFORM_MIN_VERSION"
-        "WINDOWS_CONTAINER_LOGS_PORT" "WMCO_NAMESPACE" "WMCO_IDENTIFIER_TYPE"
-        "WINC_ADMIN_PASSWORD" "WINC_SSH_PUBLIC_KEY" "WINC_ADMIN_USERNAME"
-        "AZURE_VM_EXTENSION_HANDLER_VERSION" "AZURE_2019_IMAGE_VERSION" "AZURE_2022_IMAGE_VERSION"
-        "AZURE_WINDOWS_SKU" "AZURE_WINDOWS_IMAGE_VERSION"
-        "AWS_INSTANCE_TYPE" "AWS_PROFILE" "AWS_WINDOWS_AMI" "AWS_REGION"
-        "AZURE_INSTANCE_SIZE" "GCP_MACHINE_TYPE"
-        "AWS_ROOT_VOLUME_SIZE" "AWS_ROOT_VOLUME_TYPE"
-        "AZURE_DISK_SIZE_GB" "GCP_BOOT_DISK_SIZE_GB"
-        "VSPHERE_WINDOWS_TEMPLATE" "NUTANIX_WINDOWS_IMAGE"
-        "ENVIRONMENT_TAG" "MANAGED_BY_TAG"
-    )
-
-    for var in "${config_vars[@]}"; do
-        if [[ -n "${!var:-}" ]]; then
-            ENV_VARS_BEFORE_CONFIG="${ENV_VARS_BEFORE_CONFIG} ${var}"
-        fi
-    done
-
     # Load project defaults first
     if [[ -f "$PROJECT_CONFIG_FILE" ]]; then
         load_config_file "$PROJECT_CONFIG_FILE"
@@ -113,6 +87,8 @@ function load_all_configs() {
     fi
 
     # Configuration priority: Environment Variables > User Config > Project Config
+    # Environment variables are preserved by load_config_file() - it only exports
+    # variables that are not already set in the environment.
     log "Configuration loaded successfully"
 }
 

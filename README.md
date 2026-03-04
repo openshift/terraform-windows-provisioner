@@ -172,6 +172,56 @@ Configuration is loaded with the following priority (highest to lowest):
 3. **Project config file**: `./configs/defaults.conf`
 4. **Built-in defaults** (lowest priority)
 
+### Fully Generic Configuration System
+
+The configuration system is **fully generic** - any variable you add to config files is automatically exported to child processes (including Terraform). No code changes or PRs needed!
+
+**Adding new configuration variables:**
+
+```bash
+# Add any custom variable to your config file
+echo "AWS_DEFAULT_REGION=us-west-2" >> ~/.config/byoh-provisioner/config
+echo "CUSTOM_TAG=my-value" >> ~/.config/byoh-provisioner/config
+echo "MY_NEW_VARIABLE=anything" >> ~/.config/byoh-provisioner/config
+
+# These are automatically exported and available to Terraform
+./byoh.sh apply myapp 2
+```
+
+**How it works:**
+
+- **ANY variable** in config files is automatically exported
+- **Environment priority preserved** - environment variables always win over config files
+- **No whitelist** - no need to modify code to add new variables
+- **Self-documenting** - just add variables to example configs
+
+**Example use cases:**
+
+```bash
+# CI/CD: Override region for specific environments
+export AWS_DEFAULT_REGION=eu-central-1
+./byoh.sh apply prod 4
+
+# Development: Set custom AMI via config file
+echo "AWS_WINDOWS_AMI=ami-custom123" >> ~/.config/byoh-provisioner/config
+./byoh.sh apply dev 2
+
+# Platform-specific: Add any Terraform variable
+echo "TF_VAR_custom_tag=production" >> ~/.config/byoh-provisioner/config
+./byoh.sh apply myapp 2
+```
+
+**Priority example:**
+
+```bash
+# Config file has: AWS_DEFAULT_REGION=us-east-1
+echo "AWS_DEFAULT_REGION=us-east-1" >> ~/.config/byoh-provisioner/config
+
+# Environment variable wins!
+export AWS_DEFAULT_REGION=us-west-2
+./byoh.sh apply myapp 2  # Uses us-west-2, not us-east-1
+```
+
 ### Required Configuration
 
 **None!** All credentials are auto-generated or extracted from your cluster:
@@ -189,7 +239,9 @@ See [configs/examples/](configs/examples/) for platform-specific examples:
 - `vsphere.conf.example` - vSphere-specific settings
 - `nutanix.conf.example` - Nutanix-specific settings
 
-### Key Configuration Variables
+### Common Configuration Variables
+
+**Note:** This is a **partial list** of commonly used variables. You can add **any variable** to your config file - the system is fully generic!
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -202,9 +254,34 @@ See [configs/examples/](configs/examples/) for platform-specific examples:
 | `AZURE_2022_IMAGE_VERSION` | Azure Win 2022 image version | latest |
 | `AWS_INSTANCE_TYPE` | AWS instance type | m5a.large |
 | `AWS_WINDOWS_AMI` | AWS Windows AMI override | (auto-detected) |
+| `AWS_DEFAULT_REGION` | AWS region override | (auto-detected) |
 | `AWS_ROOT_VOLUME_SIZE` | AWS root volume size (GB) | 120 |
 | `ENVIRONMENT_TAG` | Environment tag for resources | production |
 | `MANAGED_BY_TAG` | Managed-by tag for resources | terraform |
+
+**Adding new variables:**
+
+Any `KEY=VALUE` line in your config file is automatically available. Examples:
+
+```bash
+# Custom instance types
+AWS_INSTANCE_TYPE=m5a.xlarge
+AZURE_INSTANCE_SIZE=Standard_D4s_v3
+
+# Custom regions
+AWS_DEFAULT_REGION=eu-west-1
+
+# Custom tags
+TEAM_TAG=platform-engineering
+PROJECT_TAG=windows-workloads
+
+# Platform-specific overrides
+VSPHERE_DATACENTER=DC1
+NUTANIX_CLUSTER_UUID=custom-uuid
+
+# Terraform variables (via TF_VAR_ prefix)
+TF_VAR_custom_security_group=sg-12345
+```
 
 ## Platform-Specific Notes
 
