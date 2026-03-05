@@ -43,15 +43,15 @@ data "vsphere_virtual_machine" "template" {
 }
 
 resource "vsphere_virtual_machine" "win_server" {
-  count             = var.winc_number_workers
-  name              = "${var.winc_instance_name}-${count.index}"
-  resource_pool_id  = data.vsphere_resource_pool.pool.id
-  datastore_id      = data.vsphere_datastore.datastore.id
-  num_cpus          = data.vsphere_virtual_machine.template.num_cpus
-  memory            = data.vsphere_virtual_machine.template.memory
-  guest_id          = data.vsphere_virtual_machine.template.guest_id
-  scsi_type         = data.vsphere_virtual_machine.template.scsi_type
-  
+  count            = var.winc_number_workers
+  name             = "${var.winc_instance_name}-${count.index}"
+  resource_pool_id = data.vsphere_resource_pool.pool.id
+  datastore_id     = data.vsphere_datastore.datastore.id
+  num_cpus         = data.vsphere_virtual_machine.template.num_cpus
+  memory           = data.vsphere_virtual_machine.template.memory
+  guest_id         = data.vsphere_virtual_machine.template.guest_id
+  scsi_type        = data.vsphere_virtual_machine.template.scsi_type
+
   network_interface {
     network_id   = data.vsphere_network.network.id
     adapter_type = data.vsphere_virtual_machine.template.network_interface_types[0]
@@ -89,12 +89,12 @@ resource "vsphere_virtual_machine" "win_server" {
 
 
 resource "time_sleep" "wait_120_seconds" {
-  depends_on = [vsphere_virtual_machine.win_server]
+  depends_on      = [vsphere_virtual_machine.win_server]
   create_duration = "120s"
 }
 
 output "instance_ip" {
-  value = vsphere_virtual_machine.win_server[*].default_ip_address
+  value      = vsphere_virtual_machine.win_server[*].default_ip_address
   depends_on = [time_sleep.wait_120_seconds]
 }
 
