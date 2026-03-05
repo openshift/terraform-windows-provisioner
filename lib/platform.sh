@@ -14,6 +14,14 @@ function get_platform() {
         error "Failed to detect platform from cluster"
     fi
 
+    # Auto-detect UPI clusters: If no Machine API, use "none" platform
+    # UPI clusters (any platform) don't have Machine API machines
+    # The "none" platform is designed for manual/BYOH provisioning without data source queries
+    if ! oc get machines -n openshift-machine-api -l machine.openshift.io/cluster-api-machine-role=worker --no-headers 2>/dev/null | grep -q .; then
+        log "UPI cluster detected (no Machine API), using platform=none for BYOH provisioning"
+        platform="none"
+    fi
+
     if [[ ! " ${SUPPORTED_PLATFORMS[@]} " =~ " ${platform} " ]]; then
         error "Platform ${platform} not supported. Supported platforms: ${SUPPORTED_PLATFORMS[*]}"
     fi
