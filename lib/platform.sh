@@ -87,10 +87,27 @@ function write_aws_tfvars() {
     # Get hostname from Linux worker nodes (always available)
     local win_machine_hostname=$(oc get nodes -l "node-role.kubernetes.io/worker,windowsmachineconfig.openshift.io/byoh!=true" -o=jsonpath="{.items[0].status.addresses[?(@.type=='Hostname')].address}")
 
-    # Get infrastructure config from Linux Machine API (always available)
-    local linux_machine_spec=$(oc get machines -n openshift-machine-api -l machine.openshift.io/cluster-api-machine-role=worker -o=jsonpath='{.items[0].spec}')
-    local region=$(echo "$linux_machine_spec" | jq -r '.providerSpec.value.placement.region')
-    local cluster_name=$(oc get machines -n openshift-machine-api -l machine.openshift.io/cluster-api-machine-role=worker -o=jsonpath='{.items[0].metadata.labels.machine\.openshift\.io/cluster-api-cluster}')
+    # Get infrastructure config from Linux Machine API (IPI clusters)
+    local linux_machine_spec=$(oc get machines -n openshift-machine-api -l machine.openshift.io/cluster-api-machine-role=worker -o=jsonpath='{.items[0].spec}' 2>/dev/null)
+    local region=$(echo "$linux_machine_spec" | jq -r '.providerSpec.value.placement.region' 2>/dev/null)
+    local cluster_name=$(oc get machines -n openshift-machine-api -l machine.openshift.io/cluster-api-machine-role=worker -o=jsonpath='{.items[0].metadata.labels.machine\.openshift\.io/cluster-api-cluster}' 2>/dev/null)
+
+    # Fallback for UPI clusters: Machine API doesn't exist, use environment variables
+    if [[ -z "$region" || "$region" == "null" ]]; then
+        region="${AWS_REGION:-${AWS_DEFAULT_REGION}}"
+        log "Machine API not available (UPI cluster), using AWS_REGION from environment: ${region}"
+        if [[ -z "$region" ]]; then
+            error "AWS region not found. For UPI clusters, set AWS_REGION environment variable."
+        fi
+    fi
+
+    if [[ -z "$cluster_name" || "$cluster_name" == "null" ]]; then
+        cluster_name=$(oc get infrastructure cluster -o=jsonpath='{.status.infrastructureName}' 2>/dev/null)
+        log "Machine API not available (UPI cluster), using infrastructure name: ${cluster_name}"
+        if [[ -z "$cluster_name" ]]; then
+            error "Cluster name not found. Unable to extract from Machine API or infrastructure object."
+        fi
+    fi
 
     # Get Windows AMI (skip for destroy operations - not needed, just use dummy)
     local windows_ami=""
