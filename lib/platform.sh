@@ -15,10 +15,12 @@ function get_platform() {
     fi
 
     # Auto-detect UPI clusters: If no Machine API, use "none" platform
-    # UPI clusters (any platform) don't have Machine API machines
+    # UPI clusters don't have MachineSets (Machine API not supported)
+    # IPI clusters always have MachineSets (created by installer)
+    # Check for MachineSets instead of Machines (Machines might not exist yet during provisioning)
     # The "none" platform is designed for manual/BYOH provisioning without data source queries
-    if ! oc get machines -n openshift-machine-api -l machine.openshift.io/cluster-api-machine-role=worker --no-headers 2>/dev/null | grep -q .; then
-        log "UPI cluster detected (no Machine API), using platform=none for BYOH provisioning"
+    if ! oc get machinesets -n openshift-machine-api --no-headers 2>/dev/null | grep -q .; then
+        log "UPI cluster detected (no MachineSets in Machine API), using platform=none for BYOH provisioning"
         platform="none"
     fi
 
