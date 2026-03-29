@@ -20,32 +20,24 @@ function get_platform() {
     # Check for MachineSets instead of Machines (Machines might not exist yet during provisioning)
     # The "none" platform is designed for manual/BYOH provisioning without data source queries
 
-    # Debug: Check MachineSets with full error output
+    # Debug: Check MachineSets to detect IPI vs UPI cluster
     log "Checking for MachineSets to detect IPI vs UPI cluster..."
-    local machineset_output
-    local machineset_error
-    local machineset_exit_code
 
-    machineset_output=$(oc get machinesets -n openshift-machine-api --no-headers 2>&1)
-    machineset_exit_code=$?
+    # Capture stderr for debugging (may contain "No resources found" or errors)
+    local machineset_debug=$(oc get machinesets -n openshift-machine-api --no-headers 2>&1)
+    log "DEBUG: oc get machinesets output: '${machineset_debug}'"
 
-    log "DEBUG: oc get machinesets exit code: ${machineset_exit_code}"
-    log "DEBUG: oc get machinesets output: '${machineset_output}'"
+    # Actual detection - use structured output (jsonpath) instead of parsing text
+    # Try to get first MachineSet name - if empty, no MachineSets exist
+    local has_machinesets=$(oc get machinesets -n openshift-machine-api -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
-    # Check if command failed or output is empty
-    if [[ ${machineset_exit_code} -ne 0 ]]; then
-        log "DEBUG: oc get machinesets failed with exit code ${machineset_exit_code}"
-        log "DEBUG: Error: ${machineset_output}"
-        log "UPI cluster detected (MachineSets query failed - Machine API not available), using platform=none for BYOH provisioning"
-        platform="none"
-    elif [[ -z "${machineset_output}" ]] || ! echo "${machineset_output}" | grep -q .; then
-        log "DEBUG: oc get machinesets succeeded but returned empty output"
+    if [[ -z "${has_machinesets}" ]]; then
         log "UPI cluster detected (no MachineSets in Machine API), using platform=none for BYOH provisioning"
         platform="none"
     else
-        local machineset_count=$(echo "${machineset_output}" | wc -l)
-        log "DEBUG: Found ${machineset_count} MachineSets - IPI cluster detected"
-        log "IPI cluster detected with ${machineset_count} MachineSets, using platform=${platform}"
+        # Count MachineSets for logging (structured output, not text parsing)
+        local machineset_count=$(oc get machinesets -n openshift-machine-api -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null | wc -l)
+        log "IPI cluster detected (${machineset_count} MachineSets), using platform=${platform}"
     fi
 
     if [[ ! " ${SUPPORTED_PLATFORMS[@]} " =~ " ${platform} " ]]; then
