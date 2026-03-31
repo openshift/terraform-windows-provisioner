@@ -19,6 +19,7 @@ source "${SCRIPT_DIR}/lib/credentials.sh"
 source "${SCRIPT_DIR}/lib/platform.sh"
 source "${SCRIPT_DIR}/lib/validation.sh"
 source "${SCRIPT_DIR}/lib/terraform.sh"
+source "${SCRIPT_DIR}/lib/terraform-node-pool.sh"
 
 # Helper functions
 function log() {
@@ -98,6 +99,9 @@ Configuration:
     - WINDOWS_ADMIN_USERNAME: Windows username (default: Administrator)
     - AZURE_VM_EXTENSION_HANDLER_VERSION: Azure VM extension version
     - ENVIRONMENT_TAG: Environment tag for resources
+    - USE_NODE_POOL: Use node pool ConfigMap for test isolation (default: false)
+                      Set to 'true' for Prow CI integration with openshift-tests
+    - SKIP_CONFIGMAP_CREATION: Skip ConfigMap creation during apply (default: false)
 
     To create a user config file:
         mkdir -p ~/.config/byoh-provisioner
@@ -220,9 +224,16 @@ function main() {
 
             # Create ConfigMap unless explicitly skipped
             if [[ "$(get_config 'SKIP_CONFIGMAP_CREATION' 'false')" != "true" ]]; then
-                create_configmap "$templates_dir" "$platform"
-                log "Provisioning completed successfully!"
-                log "Windows instances are ready and registered with WMCO"
+                # Check if node pool mode is enabled
+                if [[ "$(get_config 'USE_NODE_POOL' 'false')" == "true" ]]; then
+                    create_node_pool_configmap "$templates_dir" "$platform"
+                    log "Provisioning completed successfully!"
+                    log "Windows nodes added to node pool for test allocation"
+                else
+                    create_configmap "$templates_dir" "$platform"
+                    log "Provisioning completed successfully!"
+                    log "Windows instances are ready and registered with WMCO"
+                fi
             else
                 log "Provisioning completed successfully!"
                 log "ConfigMap creation skipped (SKIP_CONFIGMAP_CREATION=true)"
@@ -251,7 +262,13 @@ function main() {
                     ;;
             esac
 
-            delete_configmap "$templates_dir"
+            # Remove nodes from appropriate ConfigMap before destroying VMs
+            if [[ "$(get_config 'USE_NODE_POOL' 'false')" == "true" ]]; then
+                delete_node_pool_configmap "$templates_dir"
+            else
+                delete_configmap "$templates_dir"
+            fi
+
             terraform_destroy "$templates_dir"
             cleanup_templates_dir "$templates_dir"
             log "Destruction completed successfully!"
@@ -262,8 +279,15 @@ function main() {
             if [[ ! -d "$templates_dir" ]]; then
                 error "Directory ${templates_dir} not found. Did you run ./byoh.sh apply first?"
             fi
-            create_configmap "$templates_dir" "$platform"
-            log "ConfigMap created/updated successfully!"
+
+            # Check if node pool mode is enabled
+            if [[ "$(get_config 'USE_NODE_POOL' 'false')" == "true" ]]; then
+                create_node_pool_configmap "$templates_dir" "$platform"
+                log "Node pool ConfigMap created/updated successfully!"
+            else
+                create_configmap "$templates_dir" "$platform"
+                log "ConfigMap created/updated successfully!"
+            fi
             ;;
 
         "arguments")
