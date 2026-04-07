@@ -2,7 +2,7 @@
 # Works across all platforms: AWS, GCP, Azure, vSphere, Nutanix
 
 data "template_file" "windows-userdata" {
-  count    = "${var.winc_number_workers}"
+  count    = var.winc_number_workers
   template = <<EOF
 <powershell>
 # Rename Machine (required for AWS, Azure, Nutanix; optional for GCP)
