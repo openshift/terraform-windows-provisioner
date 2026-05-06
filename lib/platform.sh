@@ -522,6 +522,8 @@ function get_azure_terraform_args() {
 
     if [[ "$win_version" == "2019" ]]; then
         sku="2019-datacenter-smalldisk"
+    elif [[ "$win_version" == "2025" ]]; then
+        sku="2025-datacenter-smalldisk"
     fi
 
     # Get configuration values

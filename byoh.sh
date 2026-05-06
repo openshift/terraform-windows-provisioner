@@ -57,7 +57,7 @@ Parameters:
                     Default: "" (empty)
 
     WINDOWS_VERSION Windows Server version to use
-                    Accepted: 2019, 2022
+                    Accepted: 2019, 2022, 2025
                     Default: 2022
 
 Supported Platforms:
