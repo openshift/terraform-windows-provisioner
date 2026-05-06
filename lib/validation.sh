@@ -3,7 +3,7 @@
 
 # Supported actions and versions
 declare -ra SUPPORTED_ACTIONS=("apply" "destroy" "arguments" "configmap" "clean" "help")
-declare -ra SUPPORTED_WIN_VERSIONS=("2019" "2022")
+declare -ra SUPPORTED_WIN_VERSIONS=("2019" "2022" "2025")
 
 # Validate action parameter
 function validate_action() {
