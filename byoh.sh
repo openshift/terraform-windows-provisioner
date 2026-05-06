@@ -57,7 +57,7 @@ Parameters:
                     Default: "" (empty)
 
     WINDOWS_VERSION Windows Server version to use
-                    Accepted: 2019, 2022
+                    Accepted: 2022, 2025
                     Default: 2022
 
 Supported Platforms:
@@ -69,15 +69,15 @@ Supported Platforms:
     - None (baremetal)
 
 Examples:
-    # Create single Windows 2019 instance
-    ./byoh.sh apply byoh 1 '' 2019
-
     # Create 4 Windows 2022 instances
     ./byoh.sh apply winc-byoh 4
 
+    # Create Windows 2025 instances
+    ./byoh.sh apply byoh-winc 2 '' 2025
+
     # Multiple platform-specific runs
-    ./byoh.sh apply byoh-winc 2 '-az2019'    # Azure 2019
     ./byoh.sh apply byoh-winc 2 '-az2022'    # Azure 2022
+    ./byoh.sh apply byoh-winc 2 '-az2025'    # Azure 2025
 
     # Show Terraform arguments without applying
     ./byoh.sh arguments byoh-winc 2

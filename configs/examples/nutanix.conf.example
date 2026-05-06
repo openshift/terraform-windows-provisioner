@@ -13,8 +13,8 @@ NUTANIX_DISK_SIZE_GB=120
 
 # Nutanix Image Names
 # These should match your pre-configured Windows images in Prism Central
-NUTANIX_2019_IMAGE_NAME=Windows-Server-2019
 NUTANIX_2022_IMAGE_NAME=Windows-Server-2022
+NUTANIX_2025_IMAGE_NAME=Windows-Server-2025
 
 # Instance Tags
 ENVIRONMENT_TAG=production

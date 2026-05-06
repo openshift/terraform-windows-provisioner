@@ -125,8 +125,8 @@ function create_user_config() {
 
 # Azure-specific
 # AZURE_VM_EXTENSION_HANDLER_VERSION=1.9
-# AZURE_2019_IMAGE_VERSION=latest
 # AZURE_2022_IMAGE_VERSION=latest
+# AZURE_2025_IMAGE_VERSION=latest
 
 # AWS Configuration
 # AWS_PROFILE - For SAML/SSO, set to your profile name (e.g., "saml")

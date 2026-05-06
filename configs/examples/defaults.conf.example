@@ -34,8 +34,8 @@ WINC_SSH_PUBLIC_KEY="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... your-email@examp
 
 # Azure-specific
 # Use specific image versions instead of 'latest'
-# AZURE_2019_IMAGE_VERSION=17763.4499.230606
 # AZURE_2022_IMAGE_VERSION=20348.1787.230621
+# AZURE_2025_IMAGE_VERSION=latest
 # AZURE_VM_EXTENSION_HANDLER_VERSION=1.9
 
 # Instance Tags
