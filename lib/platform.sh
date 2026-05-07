@@ -536,8 +536,8 @@ function get_azure_terraform_args() {
     local resource_prefix="${ARM_RESOURCE_PREFIX}"
     local sku="2022-datacenter-smalldisk"
 
-    if [[ "$win_version" == "2019" ]]; then
-        sku="2019-datacenter-smalldisk"
+    if [[ "$win_version" == "2025" ]]; then
+        sku="2025-datacenter-smalldisk"
     fi
 
     # Get configuration values

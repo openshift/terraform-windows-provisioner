@@ -17,12 +17,12 @@ variable "winc_instance_type" {
 }
 
 variable "winc_version" {
-  description = "Windows Server version for the AMI (2019 or 2022)"
+  description = "Windows Server version for the AMI (2022 or 2025)"
   type        = string
   default     = "2022"
   validation {
-    condition     = contains(["2019", "2022"], var.winc_version)
-    error_message = "Allowed values for winc_version are '2019' or '2022'."
+    condition     = contains(["2022", "2025"], var.winc_version)
+    error_message = "Allowed values for winc_version are '2022' or '2025'."
   }
 }
 

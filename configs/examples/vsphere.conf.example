@@ -8,8 +8,8 @@ WINC_SSH_PUBLIC_KEY="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC... your-email@examp
 # vSphere Configuration (most values auto-detected from cluster)
 # Windows template path (use the template you want to clone from)
 # Examples:
-#   VSPHERE_WINDOWS_TEMPLATE=Windows-Server-2019-Template
 #   VSPHERE_WINDOWS_TEMPLATE=Windows-Server-2022-Template
+#   VSPHERE_WINDOWS_TEMPLATE=Windows-Server-2025-Template
 #   VSPHERE_WINDOWS_TEMPLATE=windows-golden-images/windows-server-2022-template-qe-20241104
 VSPHERE_WINDOWS_TEMPLATE=Windows-Server-2022-Template
 

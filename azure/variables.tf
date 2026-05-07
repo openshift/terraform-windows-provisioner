@@ -31,7 +31,7 @@ variable winc_instance_type {
     default = "Standard_D2s_v3"
 }
 
-# Windows SKU (e.g., 2019-datacenter-smalldisk, 2022-datacenter-smalldisk)
+# Windows SKU (e.g., 2022-datacenter-smalldisk, 2025-datacenter-smalldisk)
 variable winc_worker_sku {
     type = string
 }

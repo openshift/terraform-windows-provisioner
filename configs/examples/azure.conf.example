@@ -18,10 +18,10 @@ AZURE_VM_EXTENSION_HANDLER_VERSION=1.9
 
 # Azure Windows Image Versions
 # Use specific versions for consistency, or 'latest' for most recent
-# Windows Server 2019
-AZURE_2019_IMAGE_VERSION=17763.4499.230606
 # Windows Server 2022
 AZURE_2022_IMAGE_VERSION=20348.1787.230621
+# Windows Server 2025
+AZURE_2025_IMAGE_VERSION=latest
 
 # Instance Tags
 ENVIRONMENT_TAG=production

@@ -58,8 +58,8 @@ Optional configuration:
 # Deploy 2 Windows Server 2022 nodes
 ./byoh.sh apply mywindows 2
 
-# Deploy 4 Windows Server 2019 nodes
-./byoh.sh apply mywindows 4 '' 2019
+# Deploy 2 Windows Server 2025 nodes
+./byoh.sh apply mywindows 2 '' 2025
 ```
 
 ### 4. Destroy Windows Nodes When Done
@@ -89,7 +89,7 @@ Optional configuration:
 | `NAME` | Base name for instances | byoh-winc | No |
 | `NUM_WORKERS` | Number of workers | 2 | No |
 | `FOLDER_SUFFIX` | Temporary folder suffix | "" | No |
-| `WINDOWS_VERSION` | Windows Server version (2019/2022) | 2022 | No |
+| `WINDOWS_VERSION` | Windows Server version (2022/2025) | 2022 | No |
 
 ### Basic Commands
 
@@ -116,8 +116,8 @@ Optional configuration:
 ### Examples
 
 ```bash
-# Single Windows 2019 instance
-./byoh.sh apply myapp 1 '' 2019
+# Single Windows 2025 instance
+./byoh.sh apply myapp 1 '' 2025
 
 # 4 Windows 2022 instances with custom name
 ./byoh.sh apply production-win 4
@@ -250,8 +250,8 @@ See [configs/examples/](configs/examples/) for platform-specific examples:
 | `WINDOWS_ADMIN_USERNAME` | Windows administrator username | Platform-specific: Azure=`capi`, Others=`Administrator` |
 | `WINDOWS_CONTAINER_LOGS_PORT` | Container logs port | 10250 |
 | `AZURE_VM_EXTENSION_HANDLER_VERSION` | Azure VM extension version | 1.9 |
-| `AZURE_2019_IMAGE_VERSION` | Azure Win 2019 image version | latest |
 | `AZURE_2022_IMAGE_VERSION` | Azure Win 2022 image version | latest |
+| `AZURE_2025_IMAGE_VERSION` | Azure Win 2025 image version | latest |
 | `AWS_INSTANCE_TYPE` | AWS instance type | m5a.large |
 | `AWS_WINDOWS_AMI` | AWS Windows AMI override | (auto-detected) |
 | `AWS_DEFAULT_REGION` | AWS region override | (auto-detected) |
@@ -312,13 +312,13 @@ TF_VAR_custom_security_group=sg-12345
 
 - Requires pre-configured Windows templates
 - vCenter credentials from cluster secrets
-- Template names: `Windows-Server-2019-Template`, `Windows-Server-2022-Template`
+- Template names: `Windows-Server-2022-Template`, `Windows-Server-2025-Template`
 
 ### Nutanix
 
 - Requires pre-configured Windows images in Prism Central
 - Cluster and subnet UUIDs auto-detected
-- Image names: `Windows-Server-2019`, `Windows-Server-2022`
+- Image names: `Windows-Server-2022`, `Windows-Server-2025`
 
 ### Bare Metal (None)
 
