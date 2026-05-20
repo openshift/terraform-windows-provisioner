@@ -5,8 +5,12 @@ terraform {
       version = "~> 1.8.0"
     }
     template = {
-      source = "hashicorp/template"
+      source  = "hashicorp/template"
       version = "~> 2.2.0"
+    }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.7.0"
     }
   }
 }
@@ -25,13 +29,13 @@ data "nutanix_image" "windows" {
 }
 
 resource "nutanix_virtual_machine" "win_server" {
-  count                = var.winc_number_workers
-  name                = "${var.winc_instance_name}-${count.index}"
-  cluster_uuid        = var.winc_cluster_uuid
-  
+  count        = var.winc_number_workers
+  name         = "${var.winc_instance_name}-${count.index}"
+  cluster_uuid = var.winc_cluster_uuid
+
   num_vcpus_per_socket = 2
-  num_sockets         = 1
-  memory_size_mib     = 8192
+  num_sockets          = 1
+  memory_size_mib      = 8192
 
   guest_customization_cloud_init_user_data = base64encode(data.template_file.windows-userdata[count.index].rendered)
 
