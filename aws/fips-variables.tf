@@ -1,0 +1,1 @@
+../lib/fips-variables.tf
