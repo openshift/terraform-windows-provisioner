@@ -32,6 +32,11 @@ variable "winc_machine_hostname" {
   type        = string
 }
 
+variable "winc_cluster_name" {
+  description = "OpenShift cluster infrastructure name. Can be retrieved with: oc get infrastructure cluster -o jsonpath='{.status.infrastructureName}'"
+  type        = string
+}
+
 variable "winc_region" {
   description = "AWS region for resource deployment"
   type        = string
