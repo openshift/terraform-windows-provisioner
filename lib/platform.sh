@@ -482,6 +482,11 @@ function write_none_tfvars() {
         region=$(get_config "AWS_DEFAULT_REGION" "us-east-1")
     fi
 
+    local cluster_name=$(oc get infrastructure cluster -o=jsonpath='{.status.infrastructureName}' 2>/dev/null)
+    if [[ -z "$cluster_name" ]]; then
+        error "Cluster name not found. Unable to extract from infrastructure object."
+    fi
+
     local admin_username=$(get_user_name "none")
     local admin_password=$(get_config "WINC_ADMIN_PASSWORD")
     local ssh_key=$(get_config "WINC_SSH_PUBLIC_KEY")
@@ -496,6 +501,7 @@ function write_none_tfvars() {
 winc_number_workers   = ${num_byoh}
 winc_machine_hostname = "${win_machine_hostname}"
 winc_instance_name    = "${byoh_name}"
+winc_cluster_name     = "${cluster_name}"
 winc_region           = "${region}"
 winc_version          = "${win_version}"
 winc_instance_type    = "${instance_type}"

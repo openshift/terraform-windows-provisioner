@@ -37,6 +37,7 @@ resource "aws_instance" "win_server" {
 
   tags = {
     Name = "${var.winc_instance_name}-${count.index}"
+    "kubernetes.io/cluster/${var.winc_cluster_name}" = "owned"
   }
 }
 
